@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AppKm.Identity.Domain\AppKm.Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\..\..\Platform\Platform.SharedKernel\Platform.SharedKernel.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
