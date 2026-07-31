@@ -1,0 +1,48 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and Test Backend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore AppKm.sln
+
+      - name: Build solution
+        run: dotnet build AppKm.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test AppKm.sln --configuration Release --no-build --verbosity normal
