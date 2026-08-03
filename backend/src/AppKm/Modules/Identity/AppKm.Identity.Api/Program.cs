@@ -1,8 +1,9 @@
 using AppKm.Identity.Infrastructure.DependencyInjection;
+using AppKm.Identity.Application.Commands.RegisterUser;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddIdentityInfrastructure(
     builder.Configuration);
-
+builder.Services.AddScoped<RegisterUserCommandHandler>();
 // Servicios HTTP
 builder.Services.AddControllers();
 
