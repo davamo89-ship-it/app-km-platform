@@ -7,6 +7,16 @@ namespace AppKm.Identity.Domain.Aggregates.Users;
 
 public sealed class User : AggregateRoot<UserId>
 {
+    // Utilizado únicamente por Entity Framework Core.
+    private User()
+        : base(default)
+    {
+        Email = null!;
+        PasswordHash = null!;
+        Status = null!;
+    }
+
+    // Constructor utilizado internamente por el dominio.
     private User(
         UserId id,
         Email email,
@@ -27,7 +37,7 @@ public sealed class User : AggregateRoot<UserId>
 
     public UserStatus Status { get; private set; }
 
-    public DateTimeOffset CreatedAtUtc { get; }
+    public DateTimeOffset CreatedAtUtc { get; private set; }
 
     public static Result<User> Register(
         UserId id,

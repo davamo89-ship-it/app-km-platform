@@ -25,4 +25,18 @@ public sealed record UserStatus
     {
         return Value;
     }
+    public static UserStatus From(string value)
+{
+    return value switch
+    {
+        "PendingVerification" => PendingVerification,
+        "Active" => Active,
+        "Suspended" => Suspended,
+        "Deactivated" => Deactivated,
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(value),
+            value,
+            "Unknown user status.")
+    };
+}
 }

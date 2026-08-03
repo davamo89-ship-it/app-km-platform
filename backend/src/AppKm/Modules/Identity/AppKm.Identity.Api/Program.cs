@@ -1,4 +1,7 @@
+using AppKm.Identity.Infrastructure.DependencyInjection;
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddIdentityInfrastructure(
+    builder.Configuration);
 
 // Servicios HTTP
 builder.Services.AddControllers();
@@ -8,7 +11,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Supervisión básica de la aplicación
-builder.Services.AddHealthChecks();
+string identityConnectionString =
+    builder.Configuration.GetConnectionString("IdentityDatabase")
+    ?? throw new InvalidOperationException(
+        "The IdentityDatabase connection string is missing.");
+
+builder.Services
+    .AddHealthChecks()
+    .AddNpgSql(
+        identityConnectionString,
+        name: "identity-postgresql");
 
 var app = builder.Build();
 
