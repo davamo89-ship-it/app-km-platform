@@ -3,6 +3,8 @@ using AppKm.Identity.Api.Contracts;
 using AppKm.Identity.Application.Commands.RegisterUser;
 using AppKm.Identity.Application.Commands.LoginUser;
 using Platform.SharedKernel.Errors;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AppKm.Identity.Api.Controllers;
 
@@ -115,6 +117,32 @@ public sealed class IdentityController : ControllerBase
             result.Value.ExpiresAtUtc);
 
         return Ok(response);
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    [ProducesResponseType<CurrentUserResponse>(
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        StatusCodes.Status401Unauthorized)]
+    public ActionResult<CurrentUserResponse> GetCurrentUser()
+    {
+        string? userIdValue =
+            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+        string? email =
+            User.FindFirst(JwtRegisteredClaimNames.Email)?.Value;
+
+        if (!Guid.TryParse(userIdValue, out Guid userId) ||
+            string.IsNullOrWhiteSpace(email))
+        {
+            return Unauthorized();
+        }
+
+        return Ok(
+            new CurrentUserResponse(
+                userId,
+                email));
     }
 }
 
