@@ -14,6 +14,18 @@ internal sealed class UserRepository : IUserRepository
         _dbContext = dbContext;
     }
 
+    public Task<User?> GetByEmailAsync(
+        Email email,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+
+        return _dbContext.Users
+            .SingleOrDefaultAsync(
+                user => user.Email == email,
+                cancellationToken);
+    }
+
     public Task<bool> ExistsByEmailAsync(
         Email email,
         CancellationToken cancellationToken)

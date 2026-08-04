@@ -15,4 +15,22 @@ internal sealed class PasswordHasherAdapter : IPasswordHasher
             user: null!,
             password);
     }
+
+    public bool Verify(
+        string passwordHash,
+        string providedPassword)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
+        ArgumentException.ThrowIfNullOrWhiteSpace(providedPassword);
+
+        PasswordVerificationResult result =
+            _passwordHasher.VerifyHashedPassword(
+                user: null!,
+                hashedPassword: passwordHash,
+                providedPassword: providedPassword);
+
+        return result is
+            PasswordVerificationResult.Success or
+            PasswordVerificationResult.SuccessRehashNeeded;
+    }
 }

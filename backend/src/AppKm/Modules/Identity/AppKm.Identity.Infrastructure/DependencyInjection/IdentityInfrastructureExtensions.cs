@@ -34,6 +34,11 @@ public static class IdentityInfrastructureExtensions
 
         services.AddSingleton<IClock, SystemClock>();
 
+        services.Configure<JwtOptions>(
+            configuration.GetSection(JwtOptions.SectionName));
+
+        services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+
         return services;
     }
 }

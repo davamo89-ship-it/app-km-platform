@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using AppKm.Identity.Api.Contracts;
 using AppKm.Identity.Application.Commands.RegisterUser;
+using AppKm.Identity.Application.Commands.LoginUser;
 using Platform.SharedKernel.Errors;
 
 namespace AppKm.Identity.Api.Controllers;
@@ -10,11 +11,14 @@ namespace AppKm.Identity.Api.Controllers;
 public sealed class IdentityController : ControllerBase
 {
     private readonly RegisterUserCommandHandler _registerUserHandler;
+    private readonly LoginUserCommandHandler _loginUserHandler;
 
     public IdentityController(
-        RegisterUserCommandHandler registerUserHandler)
+        RegisterUserCommandHandler registerUserHandler,
+        LoginUserCommandHandler loginUserHandler)
     {
         _registerUserHandler = registerUserHandler;
+        _loginUserHandler = loginUserHandler;
     }
     [HttpGet("status")]
     [ProducesResponseType<IdentityStatusResponse>(
@@ -69,6 +73,48 @@ public sealed class IdentityController : ControllerBase
         return new ErrorResponse(
             error.Code,
             error.Message);
+    }
+    [HttpPost("login")]
+    [ProducesResponseType<LoginUserResponse>(
+        StatusCodes.Status200OK)]
+    [ProducesResponseType<ErrorResponse>(
+        StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ErrorResponse>(
+        StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Login(
+        LoginUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var command = new LoginUserCommand(
+            request.Email,
+            request.Password);
+
+        var result = await _loginUserHandler.HandleAsync(
+            command,
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ToErrorResponse(result.Error);
+
+            if (result.Error.Code ==
+                LoginUserErrors.AccountNotActive.Code)
+            {
+                return StatusCode(
+                    StatusCodes.Status403Forbidden,
+                    errorResponse);
+            }
+
+            return Unauthorized(errorResponse);
+        }
+
+            var response = new LoginUserResponse(
+            result.Value.UserId.Value,
+            result.Value.Email,
+            result.Value.AccessToken,
+            result.Value.ExpiresAtUtc);
+
+        return Ok(response);
     }
 }
 
