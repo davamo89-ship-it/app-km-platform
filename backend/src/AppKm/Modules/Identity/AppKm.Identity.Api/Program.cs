@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using AppKm.Identity.Application.Commands.RefreshSession;
+using AppKm.Identity.Application.Commands.LogoutSession;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddIdentityInfrastructure(
@@ -14,6 +15,7 @@ builder.Services.AddIdentityInfrastructure(
 builder.Services.AddScoped<RegisterUserCommandHandler>();
 builder.Services.AddScoped<LoginUserCommandHandler>();
 builder.Services.AddScoped<RefreshSessionCommandHandler>();
+builder.Services.AddScoped<LogoutSessionCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddControllers();

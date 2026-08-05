@@ -6,6 +6,7 @@ using Platform.SharedKernel.Errors;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using AppKm.Identity.Application.Commands.RefreshSession;
+using AppKm.Identity.Application.Commands.LogoutSession;
 
 namespace AppKm.Identity.Api.Controllers;
 
@@ -16,15 +17,18 @@ public sealed class IdentityController : ControllerBase
     private readonly RegisterUserCommandHandler _registerUserHandler;
     private readonly LoginUserCommandHandler _loginUserHandler;
     private readonly RefreshSessionCommandHandler _refreshSessionHandler;
+    private readonly LogoutSessionCommandHandler _logoutSessionHandler;
 
     public IdentityController(
         RegisterUserCommandHandler registerUserHandler,
         LoginUserCommandHandler loginUserHandler,
-        RefreshSessionCommandHandler refreshSessionHandler)
+        RefreshSessionCommandHandler refreshSessionHandler,
+        LogoutSessionCommandHandler logoutSessionHandler)
     {
         _registerUserHandler = registerUserHandler;
         _loginUserHandler = loginUserHandler;
         _refreshSessionHandler = refreshSessionHandler;
+        _logoutSessionHandler = logoutSessionHandler;
     }
     [HttpGet("status")]
     [ProducesResponseType<IdentityStatusResponse>(
@@ -182,6 +186,31 @@ public sealed class IdentityController : ControllerBase
                 result.Value.RefreshTokenExpiresAtUtc);
 
             return Ok(response);
+        }
+
+        [HttpPost("logout")]
+        [ProducesResponseType(
+            StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ErrorResponse>(
+            StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Logout(
+            LogoutSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            var command = new LogoutSessionCommand(
+                request.RefreshToken);
+
+            var result = await _logoutSessionHandler.HandleAsync(
+                command,
+                cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(
+                    ToErrorResponse(result.Error));
+            }
+
+            return NoContent();
         }
 }
 
