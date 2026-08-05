@@ -173,3 +173,19 @@ Cada nueva funcionalidad deberá incluir:
 - Pruebas manuales
 - Commit
 - Push
+
+# Sprint 3 — Authentication
+
+## Completed
+
+- User registration
+- User login
+- BCrypt password hashing
+- JWT authentication
+- Protected endpoints
+- Refresh Token
+- Refresh Token Rotation
+- Logout
+- Session Revocation
+
+Status: ✅ Completed
