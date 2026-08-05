@@ -5,6 +5,9 @@ namespace AppKm.Identity.Application.Interfaces;
 
 public interface IUserRepository
 {
+    Task<User?> GetByIdAsync(
+        UserId userId,
+        CancellationToken cancellationToken);
     Task<User?> GetByEmailAsync(
         Email email,
         CancellationToken cancellationToken);

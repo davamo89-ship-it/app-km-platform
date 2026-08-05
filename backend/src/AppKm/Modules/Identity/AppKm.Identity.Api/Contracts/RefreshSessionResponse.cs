@@ -1,6 +1,6 @@
 namespace AppKm.Identity.Api.Contracts;
 
-public sealed record LoginUserResponse(
+public sealed record RefreshSessionResponse(
     Guid UserId,
     string Email,
     string AccessToken,

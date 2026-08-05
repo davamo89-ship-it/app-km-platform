@@ -6,12 +6,15 @@ using AppKm.Identity.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using AppKm.Identity.Application.Commands.RefreshSession;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddIdentityInfrastructure(
     builder.Configuration);
 builder.Services.AddScoped<RegisterUserCommandHandler>();
 builder.Services.AddScoped<LoginUserCommandHandler>();
+builder.Services.AddScoped<RefreshSessionCommandHandler>();
+
 // Servicios HTTP
 builder.Services.AddControllers();
 

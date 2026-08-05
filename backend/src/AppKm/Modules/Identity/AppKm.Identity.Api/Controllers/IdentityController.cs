@@ -5,6 +5,7 @@ using AppKm.Identity.Application.Commands.LoginUser;
 using Platform.SharedKernel.Errors;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
+using AppKm.Identity.Application.Commands.RefreshSession;
 
 namespace AppKm.Identity.Api.Controllers;
 
@@ -14,13 +15,16 @@ public sealed class IdentityController : ControllerBase
 {
     private readonly RegisterUserCommandHandler _registerUserHandler;
     private readonly LoginUserCommandHandler _loginUserHandler;
+    private readonly RefreshSessionCommandHandler _refreshSessionHandler;
 
     public IdentityController(
         RegisterUserCommandHandler registerUserHandler,
-        LoginUserCommandHandler loginUserHandler)
+        LoginUserCommandHandler loginUserHandler,
+        RefreshSessionCommandHandler refreshSessionHandler)
     {
         _registerUserHandler = registerUserHandler;
         _loginUserHandler = loginUserHandler;
+        _refreshSessionHandler = refreshSessionHandler;
     }
     [HttpGet("status")]
     [ProducesResponseType<IdentityStatusResponse>(
@@ -114,7 +118,9 @@ public sealed class IdentityController : ControllerBase
             result.Value.UserId.Value,
             result.Value.Email,
             result.Value.AccessToken,
-            result.Value.ExpiresAtUtc);
+            result.Value.AccessTokenExpiresAtUtc,
+            result.Value.RefreshToken,
+            result.Value.RefreshTokenExpiresAtUtc);
 
         return Ok(response);
     }
@@ -144,6 +150,39 @@ public sealed class IdentityController : ControllerBase
                 userId,
                 email));
     }
+
+        [HttpPost("refresh")]
+        [ProducesResponseType<RefreshSessionResponse>(
+            StatusCodes.Status200OK)]
+        [ProducesResponseType<ErrorResponse>(
+            StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> Refresh(
+            RefreshSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            var command = new RefreshSessionCommand(
+                request.RefreshToken);
+
+            var result = await _refreshSessionHandler.HandleAsync(
+                command,
+                cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return Unauthorized(
+                    ToErrorResponse(result.Error));
+            }
+
+            var response = new RefreshSessionResponse(
+                result.Value.UserId,
+                result.Value.Email,
+                result.Value.AccessToken,
+                result.Value.AccessTokenExpiresAtUtc,
+                result.Value.RefreshToken,
+                result.Value.RefreshTokenExpiresAtUtc);
+
+            return Ok(response);
+        }
 }
 
 public sealed record IdentityStatusResponse(

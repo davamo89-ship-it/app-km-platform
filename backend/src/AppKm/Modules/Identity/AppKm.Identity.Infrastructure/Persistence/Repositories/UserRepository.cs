@@ -14,6 +14,15 @@ internal sealed class UserRepository : IUserRepository
         _dbContext = dbContext;
     }
 
+    public Task<User?> GetByIdAsync(
+    UserId userId,
+    CancellationToken cancellationToken)
+{
+    return _dbContext.Users.SingleOrDefaultAsync(
+        user => user.Id == userId,
+        cancellationToken);
+}
+
     public Task<User?> GetByEmailAsync(
         Email email,
         CancellationToken cancellationToken)

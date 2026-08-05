@@ -26,6 +26,8 @@ public static class IdentityInfrastructureExtensions
 
         services.AddScoped<IUserRepository, UserRepository>();
 
+        services.AddScoped<ISessionRepository, SessionRepository>();
+
         services.AddScoped<IUnitOfWork>(
             serviceProvider =>
                 serviceProvider.GetRequiredService<IdentityDbContext>());
@@ -38,6 +40,10 @@ public static class IdentityInfrastructureExtensions
             configuration.GetSection(JwtOptions.SectionName));
 
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+
+        services.Configure<RefreshTokenOptions>(configuration.GetSection(RefreshTokenOptions.SectionName));
+
+        services.AddSingleton<IRefreshTokenGenerator, RefreshTokenGenerator>();
 
         return services;
     }
