@@ -28,6 +28,8 @@ public static class IdentityInfrastructureExtensions
 
         services.AddScoped<ISessionRepository, SessionRepository>();
 
+        services.AddScoped<IUserRoleRepository,UserRoleRepository>();
+
         services.AddScoped<IUnitOfWork>(
             serviceProvider =>
                 serviceProvider.GetRequiredService<IdentityDbContext>());

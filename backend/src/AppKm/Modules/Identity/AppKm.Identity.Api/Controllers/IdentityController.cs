@@ -148,11 +148,18 @@ public sealed class IdentityController : ControllerBase
         {
             return Unauthorized();
         }
+        string[] roles = User
+            .FindAll("role")
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(role => role)
+            .ToArray();
 
         return Ok(
             new CurrentUserResponse(
                 userId,
-                email));
+                email,
+                roles));
     }
 
         [HttpPost("refresh")]

@@ -12,15 +12,18 @@ public sealed class LoginUserCommandHandler
     private const int RefreshTokenExpirationDays = 30;
 
     private readonly IUserRepository _userRepository;
+    private readonly IUserRoleRepository _userRoleRepository;
     private readonly ISessionRepository _sessionRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IRefreshTokenGenerator _refreshTokenGenerator;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
+    
 
     public LoginUserCommandHandler(
         IUserRepository userRepository,
+        IUserRoleRepository userRoleRepository,
         ISessionRepository sessionRepository,
         IPasswordHasher passwordHasher,
         IJwtTokenGenerator jwtTokenGenerator,
@@ -29,6 +32,7 @@ public sealed class LoginUserCommandHandler
         IClock clock)
     {
         _userRepository = userRepository;
+        _userRoleRepository = userRoleRepository;
         _sessionRepository = sessionRepository;
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
@@ -82,10 +86,16 @@ public sealed class LoginUserCommandHandler
 
         DateTimeOffset utcNow = _clock.UtcNow;
 
+        IReadOnlyCollection<string> roles =
+            await _userRoleRepository.GetRoleNamesByUserIdAsync(
+                user.Id,
+                cancellationToken);
+
         JwtTokenResult accessTokenResult =
             _jwtTokenGenerator.Generate(
                 user.Id,
-                user.Email.Value);
+                user.Email.Value,
+                roles);
 
         RefreshTokenResult refreshTokenResult =
             _refreshTokenGenerator.Generate();

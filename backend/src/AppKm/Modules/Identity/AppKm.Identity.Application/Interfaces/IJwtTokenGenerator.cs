@@ -6,7 +6,8 @@ public interface IJwtTokenGenerator
 {
     JwtTokenResult Generate(
         UserId userId,
-        string email);
+        string email,
+        IReadOnlyCollection<string> roles);
 }
 
 public sealed record JwtTokenResult(

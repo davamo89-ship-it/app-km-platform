@@ -8,6 +8,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
+using AppKm.Identity.Api.Security;
+using AppKm.Identity.Domain.Aggregates.Roles;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddIdentityInfrastructure(
@@ -91,7 +93,9 @@ builder.Services
                         jwtOptions.Secret)),
 
             ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero
+            ClockSkew = TimeSpan.Zero,
+
+            RoleClaimType = "role",
         };
 
     options.Events = new JwtBearerEvents
@@ -115,7 +119,32 @@ builder.Services
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(
+        AuthorizationPolicies.AthleteOnly,
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireRole(RoleNames.Athlete);
+        });
+
+    options.AddPolicy(
+        AuthorizationPolicies.MerchantOnly,
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireRole(RoleNames.Merchant);
+        });
+
+    options.AddPolicy(
+        AuthorizationPolicies.AdminOnly,
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireRole(RoleNames.Admin);
+        });
+});
 
 // Supervisión básica de la aplicación
 string identityConnectionString =

@@ -24,28 +24,38 @@ internal sealed class JwtTokenGenerator : IJwtTokenGenerator
 
     public JwtTokenResult Generate(
         UserId userId,
-        string email)
+        string email,
+        IReadOnlyCollection<string> roles)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ArgumentNullException.ThrowIfNull(roles);
 
         DateTimeOffset issuedAtUtc = _clock.UtcNow;
         DateTimeOffset expiresAtUtc =
             issuedAtUtc.AddMinutes(_options.ExpirationMinutes);
 
-        var claims = new List<Claim>
+      var claims = new List<Claim>
         {
-            new(
-                JwtRegisteredClaimNames.Sub,
-                userId.Value.ToString()),
+        new(
+            JwtRegisteredClaimNames.Sub,
+            userId.Value.ToString()),
 
-            new(
-                JwtRegisteredClaimNames.Email,
-                email),
+        new(
+            JwtRegisteredClaimNames.Email,
+            email),
 
-            new(
-                JwtRegisteredClaimNames.Jti,
-                Guid.NewGuid().ToString())
+        new(
+            JwtRegisteredClaimNames.Jti,
+            Guid.NewGuid().ToString())
         };
+
+        foreach (string role in roles)
+        {
+            claims.Add(
+                new Claim(
+                    "role",
+                    role));
+}
 
         var securityKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_options.Secret));

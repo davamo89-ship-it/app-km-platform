@@ -12,14 +12,16 @@ public sealed class RefreshSessionCommandHandler
 
     private readonly ISessionRepository _sessionRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IUserRoleRepository _userRoleRepository;
     private readonly IRefreshTokenGenerator _refreshTokenGenerator;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
-    public RefreshSessionCommandHandler(
+ public RefreshSessionCommandHandler(
         ISessionRepository sessionRepository,
         IUserRepository userRepository,
+        IUserRoleRepository userRoleRepository,
         IRefreshTokenGenerator refreshTokenGenerator,
         IJwtTokenGenerator jwtTokenGenerator,
         IUnitOfWork unitOfWork,
@@ -27,6 +29,7 @@ public sealed class RefreshSessionCommandHandler
     {
         _sessionRepository = sessionRepository;
         _userRepository = userRepository;
+        _userRoleRepository = userRoleRepository;
         _refreshTokenGenerator = refreshTokenGenerator;
         _jwtTokenGenerator = jwtTokenGenerator;
         _unitOfWork = unitOfWork;
@@ -103,10 +106,16 @@ public sealed class RefreshSessionCommandHandler
                 rotationResult.Error);
         }
 
+       IReadOnlyCollection<string> roles =
+            await _userRoleRepository.GetRoleNamesByUserIdAsync(
+                user.Id,
+                cancellationToken);
+
         JwtTokenResult newAccessToken =
             _jwtTokenGenerator.Generate(
                 user.Id,
-                user.Email.Value);
+                user.Email.Value,
+                roles);
 
         await _unitOfWork.SaveChangesAsync(
             cancellationToken);
