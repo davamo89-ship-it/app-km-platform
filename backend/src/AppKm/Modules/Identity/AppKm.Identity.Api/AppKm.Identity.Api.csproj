@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AppKm.Identity.Application\AppKm.Identity.Application.csproj" />
     <ProjectReference Include="..\AppKm.Identity.Infrastructure\AppKm.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Athletes\AppKm.Athletes.Infrastructure\AppKm.Athletes.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -10,9 +10,12 @@ using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
 using AppKm.Identity.Api.Security;
 using AppKm.Identity.Domain.Aggregates.Roles;
+using AppKm.Athletes.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddIdentityInfrastructure(
+    builder.Configuration);
+builder.Services.AddAthleteInfrastructure(
     builder.Configuration);
 builder.Services.AddScoped<RegisterUserCommandHandler>();
 builder.Services.AddScoped<LoginUserCommandHandler>();

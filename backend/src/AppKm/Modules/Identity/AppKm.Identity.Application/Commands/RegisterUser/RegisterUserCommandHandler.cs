@@ -14,19 +14,22 @@ public sealed class RegisterUserCommandHandler
     private readonly IPasswordHasher _passwordHasher;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
+    private readonly IAthleteProfileProvisioner _athleteProfileProvisioner;
 
         public RegisterUserCommandHandler(
             IUserRepository userRepository,
             IUserRoleRepository userRoleRepository,
             IPasswordHasher passwordHasher,
             IUnitOfWork unitOfWork,
-            IClock clock)
+            IClock clock,
+            IAthleteProfileProvisioner athleteProfileProvisioner)
         {
             _userRepository = userRepository;
             _userRoleRepository = userRoleRepository;
             _passwordHasher = passwordHasher;
             _unitOfWork = unitOfWork;
             _clock = clock;
+            _athleteProfileProvisioner = athleteProfileProvisioner;
         }
 
     public async Task<Result<UserId>> HandleAsync(
@@ -101,6 +104,11 @@ public sealed class RegisterUserCommandHandler
             cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(
+            cancellationToken);
+
+        await _athleteProfileProvisioner.CreateAsync(
+            userResult.Value.Id.Value,
+            command.Email.Split('@')[0],
             cancellationToken);
 
         return Result<UserId>.Success(userId);
