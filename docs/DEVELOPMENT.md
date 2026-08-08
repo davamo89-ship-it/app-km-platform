@@ -63,6 +63,8 @@ Status: healthy
 cd backend
 
 dotnet run --project src\AppKm\Modules\Identity\AppKm.Identity.Api\AppKm.Identity.Api.csproj
+
+dotnet run --project src\AppKm\Modules\Athletes\AppKm.Athletes.Api\AppKm.Athletes.Api.csproj
 ```
 
 ---
