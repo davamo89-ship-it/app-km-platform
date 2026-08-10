@@ -73,6 +73,8 @@ dotnet run --project src\AppKm\Modules\Athletes\AppKm.Athletes.Api\AppKm.Athlete
 
 ```
 http://localhost:5264/swagger
+http://localhost:5208/swagger
+
 ```
 
 ---

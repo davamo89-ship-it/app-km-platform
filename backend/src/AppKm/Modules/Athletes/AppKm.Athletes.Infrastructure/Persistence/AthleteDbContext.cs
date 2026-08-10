@@ -1,5 +1,6 @@
 using AppKm.Athletes.Domain.Aggregates.Athletes;
 using Microsoft.EntityFrameworkCore;
+using AppKm.Athletes.Domain.Aggregates.StravaConnections;
 
 namespace AppKm.Athletes.Infrastructure.Persistence;
 
@@ -12,6 +13,8 @@ public sealed class AthleteDbContext : DbContext
     }
 
     public DbSet<Athlete> Athletes => Set<Athlete>();
+    public DbSet<StravaConnection> StravaConnections =>
+    Set<StravaConnection>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)

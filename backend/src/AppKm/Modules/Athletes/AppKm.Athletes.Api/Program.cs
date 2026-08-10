@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using AppKm.Athletes.Application.Commands.UpdateAthleteProfile;
+using AppKm.Athletes.Application.Commands.ConnectStrava;
+using AppKm.Athletes.Application.Queries.GetStravaConnectionStatus;
+using AppKm.Athletes.Application.Commands.DisconnectStrava;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +17,10 @@ builder.Services.AddAthleteInfrastructure(
 
 builder.Services.AddScoped<GetCurrentAthleteQueryHandler>();
 builder.Services.AddScoped<UpdateAthleteProfileCommandHandler>();
+builder.Services.AddScoped<ConnectStravaCommandHandler>();
+builder.Services.AddScoped<GetStravaConnectionStatusQueryHandler>();
+builder.Services.AddScoped<DisconnectStravaCommandHandler>();
+
 
 builder.Services.AddControllers();
 

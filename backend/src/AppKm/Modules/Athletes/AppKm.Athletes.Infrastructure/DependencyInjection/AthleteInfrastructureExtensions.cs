@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.SharedKernel.Abstractions;
+using AppKm.Athletes.Infrastructure.Strava;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -30,6 +31,32 @@ public static class AthleteInfrastructureExtensions
             IAthleteRepository,
             AthleteRepository>();
 
+        services.Configure<StravaOptions>(
+            configuration.GetSection(
+                StravaOptions.SectionName));
+
+        services.AddDataProtection();
+
+        services.AddScoped<
+            IStravaTokenProtector,
+              StravaTokenProtector>();
+
+        services.AddScoped<
+            IStravaAuthorizationService,
+            StravaAuthorizationService>();
+
+        services.AddScoped<
+            IStravaConnectionRepository,
+            StravaConnectionRepository>();
+
+        services.AddHttpClient<
+            IStravaOAuthClient,
+            StravaOAuthClient>();
+
+        services.AddSingleton<
+            IStravaTokenProtector,
+            StravaTokenProtector>();
+
         services.AddScoped<
              IAthleteUnitOfWork,
              AthleteUnitOfWork>();
@@ -37,6 +64,14 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<
             IAthleteProfileProvisioner,
             AthleteProfileProvisioner>();
+
+        services.AddScoped<
+            IOAuthStateGenerator,
+            OAuthStateGenerator>();
+
+        services.AddSingleton<
+            IOAuthStateStore,
+            InMemoryOAuthStateStore>();
 
         return services;
     }
