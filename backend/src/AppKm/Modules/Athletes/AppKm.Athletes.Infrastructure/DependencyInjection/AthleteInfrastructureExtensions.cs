@@ -53,6 +53,10 @@ public static class AthleteInfrastructureExtensions
             IStravaOAuthClient,
             StravaOAuthClient>();
 
+        services.AddHttpClient<
+            IStravaTokenRevocationService,
+            StravaTokenRevocationService>();
+
         services.AddSingleton<
             IStravaTokenProtector,
             StravaTokenProtector>();

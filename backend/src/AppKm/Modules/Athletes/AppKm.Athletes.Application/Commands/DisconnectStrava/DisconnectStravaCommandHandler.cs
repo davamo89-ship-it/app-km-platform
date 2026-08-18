@@ -10,15 +10,18 @@ public sealed class DisconnectStravaCommandHandler
     private readonly IAthleteRepository _athleteRepository;
     private readonly IStravaConnectionRepository _stravaConnectionRepository;
     private readonly IAthleteUnitOfWork _unitOfWork;
+    private readonly IStravaTokenRevocationService _tokenRevocationService;
 
     public DisconnectStravaCommandHandler(
         IAthleteRepository athleteRepository,
         IStravaConnectionRepository stravaConnectionRepository,
-        IAthleteUnitOfWork unitOfWork)
+        IAthleteUnitOfWork unitOfWork,
+        IStravaTokenRevocationService tokenRevocationService)
     {
         _athleteRepository = athleteRepository;
         _stravaConnectionRepository = stravaConnectionRepository;
         _unitOfWork = unitOfWork;
+        _tokenRevocationService = tokenRevocationService;
     }
 
     public async Task<Result<DisconnectStravaResult>> HandleAsync(
@@ -46,6 +49,9 @@ public sealed class DisconnectStravaCommandHandler
             return Result<DisconnectStravaResult>.Failure(
                 DisconnectStravaErrors.ConnectionNotFound);
         }
+        await _tokenRevocationService.RevokeAsync(
+            connection.RefreshTokenEncrypted,
+            cancellationToken);
 
         DateTimeOffset disconnectedAtUtc =
             DateTimeOffset.UtcNow;

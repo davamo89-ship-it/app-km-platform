@@ -8,8 +8,7 @@ namespace AppKm.Athletes.Infrastructure.Strava;
 internal sealed class StravaOAuthClient
     : IStravaOAuthClient
 {
-    private const string TokenEndpoint =
-        "https://www.strava.com/oauth/token";
+
 
     private readonly HttpClient _httpClient;
     private readonly StravaOptions _options;
@@ -43,10 +42,13 @@ internal sealed class StravaOAuthClient
                 "authorization_code"
         };
 
+        var tokenEndpoint =
+            $"{_options.OAuthBaseUrl.TrimEnd('/')}/token";
+
         using var request =
             new HttpRequestMessage(
                 HttpMethod.Post,
-                TokenEndpoint)
+                tokenEndpoint)
             {
                 Content =
                     new FormUrlEncodedContent(form)

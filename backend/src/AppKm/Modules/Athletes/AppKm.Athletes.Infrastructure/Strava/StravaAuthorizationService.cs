@@ -7,9 +7,6 @@ namespace AppKm.Athletes.Infrastructure.Strava;
 internal sealed class StravaAuthorizationService
     : IStravaAuthorizationService
 {
-    private const string AuthorizationEndpoint =
-        "https://www.strava.com/oauth/authorize";
-
     private readonly StravaOptions _options;
 
     public StravaAuthorizationService(
@@ -45,8 +42,11 @@ internal sealed class StravaAuthorizationService
                     state
             };
 
+        var authorizationEndpoint =
+            $"{_options.OAuthBaseUrl.TrimEnd('/')}/authorize";
+
         return QueryHelpers.AddQueryString(
-            AuthorizationEndpoint,
+            authorizationEndpoint,
             parameters);
     }
 }
