@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.SharedKernel.Abstractions;
 using AppKm.Athletes.Infrastructure.Strava;
+using AppKm.Athletes.Application.Queries.GetStravaActivities;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -30,6 +31,8 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<
             IAthleteRepository,
             AthleteRepository>();
+
+        services.AddScoped<GetStravaActivitiesQueryHandler>();
 
         services.Configure<StravaOptions>(
             configuration.GetSection(
@@ -56,6 +59,14 @@ public static class AthleteInfrastructureExtensions
         services.AddHttpClient<
             IStravaTokenRevocationService,
             StravaTokenRevocationService>();
+
+        services.AddScoped<
+            IStravaAccessTokenService,
+            StravaAccessTokenService>();
+
+        services.AddHttpClient<
+            IStravaActivitiesClient,
+            StravaActivitiesClient>();
 
         services.AddSingleton<
             IStravaTokenProtector,

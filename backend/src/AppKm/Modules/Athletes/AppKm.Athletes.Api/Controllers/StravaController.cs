@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using AppKm.Athletes.Application.Commands.ConnectStrava;
 using AppKm.Athletes.Application.Queries.GetStravaConnectionStatus;
 using AppKm.Athletes.Application.Commands.DisconnectStrava;
+using AppKm.Athletes.Application.Queries.GetStravaActivities;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -27,6 +28,8 @@ public sealed class StravaController : ControllerBase
         _connectionStatusHandler;
         private readonly DisconnectStravaCommandHandler
     _disconnectHandler;
+    private readonly GetStravaActivitiesQueryHandler
+    _activitiesHandler;
 
     public StravaController(
     IStravaAuthorizationService authorizationService,
@@ -34,7 +37,8 @@ public sealed class StravaController : ControllerBase
     IOAuthStateStore stateStore,
     ConnectStravaCommandHandler connectStravaHandler,
     GetStravaConnectionStatusQueryHandler connectionStatusHandler,
-    DisconnectStravaCommandHandler disconnectHandler)
+    DisconnectStravaCommandHandler disconnectHandler,
+    GetStravaActivitiesQueryHandler activitiesHandler)
 {
     _authorizationService =
         authorizationService;
@@ -53,6 +57,9 @@ public sealed class StravaController : ControllerBase
 
     _disconnectHandler =
         disconnectHandler;
+
+    _activitiesHandler =
+        activitiesHandler;
 }
 
     [HttpGet("callback")]
@@ -195,6 +202,52 @@ public sealed class StravaController : ControllerBase
                 result.ConnectedAtUtc,
                 result.AccessTokenExpiresAtUtc));
     }
+
+        [Authorize(Roles = "Athlete")]
+        [HttpGet("activities")]
+        public async Task<IActionResult> GetActivities(
+            [FromQuery] DateTimeOffset? after,
+            [FromQuery] DateTimeOffset? before,
+            [FromQuery] int page = 1,
+            [FromQuery] int perPage = 30,
+            CancellationToken cancellationToken = default)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var query =
+                new GetStravaActivitiesQuery(
+                    userId,
+                    after,
+                    before,
+                    page,
+                    perPage);
+
+            var result =
+                await _activitiesHandler.HandleAsync(
+                    query,
+                    cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(new
+                {
+                    code = result.Error.Code,
+                    message = result.Error.Message
+                });
+            }
+
+            return Ok(result.Value);
+        }
+
     [Authorize(Roles = "Athlete")]
     [HttpDelete("disconnect")]
     public async Task<IActionResult> Disconnect(

@@ -81,6 +81,65 @@ internal sealed class StravaOAuthClient
                 tokenResponse.ExpiresAt));
     }
 
+        public async Task<StravaTokenRefreshResult> RefreshTokenAsync(
+        string refreshToken,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(refreshToken);
+
+        var form = new Dictionary<string, string>
+        {
+            ["client_id"] =
+                _options.ClientId.ToString(),
+
+            ["client_secret"] =
+                _options.ClientSecret,
+
+            ["grant_type"] =
+                "refresh_token",
+
+            ["refresh_token"] =
+                refreshToken
+        };
+
+        var tokenEndpoint =
+            $"{_options.OAuthBaseUrl.TrimEnd('/')}/token";
+
+        using var request =
+            new HttpRequestMessage(
+                HttpMethod.Post,
+                tokenEndpoint)
+            {
+                Content =
+                    new FormUrlEncodedContent(form)
+            };
+
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(
+                request,
+                cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        StravaRefreshTokenResponse? tokenResponse =
+            await response.Content
+                .ReadFromJsonAsync<StravaRefreshTokenResponse>(
+                    cancellationToken:
+                        cancellationToken);
+
+        if (tokenResponse is null)
+        {
+            throw new InvalidOperationException(
+                "Strava returned an empty token refresh response.");
+        }
+
+        return new StravaTokenRefreshResult(
+            tokenResponse.AccessToken,
+            tokenResponse.RefreshToken,
+            DateTimeOffset.FromUnixTimeSeconds(
+                tokenResponse.ExpiresAt));
+    }
+
     private sealed record StravaTokenResponse(
         [property: JsonPropertyName("access_token")]
         string AccessToken,
@@ -97,4 +156,13 @@ internal sealed class StravaOAuthClient
     private sealed record StravaAthleteResponse(
         [property: JsonPropertyName("id")]
         long Id);
+     private sealed record StravaRefreshTokenResponse(
+        [property: JsonPropertyName("access_token")]
+        string AccessToken,
+
+        [property: JsonPropertyName("refresh_token")]
+        string RefreshToken,
+
+        [property: JsonPropertyName("expires_at")]
+        long ExpiresAt);
 }

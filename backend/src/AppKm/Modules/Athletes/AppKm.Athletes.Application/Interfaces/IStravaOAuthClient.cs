@@ -5,4 +5,8 @@ public interface IStravaOAuthClient
     Task<StravaTokenExchangeResult> ExchangeCodeAsync(
         string code,
         CancellationToken cancellationToken);
+
+    Task<StravaTokenRefreshResult> RefreshTokenAsync(
+        string refreshToken,
+        CancellationToken cancellationToken);
 }
