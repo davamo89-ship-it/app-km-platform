@@ -1,6 +1,8 @@
 using AppKm.Athletes.Domain.Aggregates.Athletes;
 using Microsoft.EntityFrameworkCore;
 using AppKm.Athletes.Domain.Aggregates.StravaConnections;
+using AppKm.Athletes.Domain.Aggregates.AthleteActivities;
+using AppKm.Athletes.Domain.Aggregates.PointTransactions;
 
 namespace AppKm.Athletes.Infrastructure.Persistence;
 
@@ -15,6 +17,10 @@ public sealed class AthleteDbContext : DbContext
     public DbSet<Athlete> Athletes => Set<Athlete>();
     public DbSet<StravaConnection> StravaConnections =>
     Set<StravaConnection>();
+    public DbSet<AthleteActivity> AthleteActivities =>
+    Set<AthleteActivity>();
+    public DbSet<PointTransaction> PointTransactions =>
+    Set<PointTransaction>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)

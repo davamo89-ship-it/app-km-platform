@@ -93,6 +93,7 @@ internal sealed class StravaActivitiesClient
                     activity.SportType,
                     activity.Distance,
                     activity.StartDate,
+                    activity.StartDateLocal,
                     activity.ElapsedTime,
                     activity.MovingTime))
             .ToList();
@@ -113,6 +114,9 @@ internal sealed class StravaActivitiesClient
 
         [property: JsonPropertyName("start_date")]
         DateTimeOffset StartDate,
+
+        [property: JsonPropertyName("start_date_local")]
+        DateTime StartDateLocal,
 
         [property: JsonPropertyName("elapsed_time")]
         int ElapsedTime,

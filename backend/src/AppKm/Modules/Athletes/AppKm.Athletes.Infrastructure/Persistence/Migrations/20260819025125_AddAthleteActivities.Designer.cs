@@ -3,6 +3,7 @@ using System;
 using AppKm.Athletes.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AthleteDbContext))]
-    partial class AthleteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819025125_AddAthleteActivities")]
+    partial class AddAthleteActivities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -53,10 +56,6 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
                     b.Property<int>("MovingTimeSeconds")
                         .HasColumnType("integer")
                         .HasColumnName("moving_time_seconds");
-
-                    b.Property<int>("Points")
-                        .HasColumnType("integer")
-                        .HasColumnName("points");
 
                     b.Property<DateTime>("StartDateLocal")
                         .HasColumnType("timestamp with time zone")
@@ -115,47 +114,6 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("athletes", "athletes");
-                });
-
-            modelBuilder.Entity("AppKm.Athletes.Domain.Aggregates.PointTransactions.PointTransaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid?>("AthleteActivityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("athlete_activity_id");
-
-                    b.Property<Guid>("AthleteId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("athlete_id");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<DateTimeOffset?>("ExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at_utc");
-
-                    b.Property<int>("Points")
-                        .HasColumnType("integer")
-                        .HasColumnName("points");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("type");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AthleteId", "AthleteActivityId", "Type")
-                        .IsUnique()
-                        .HasDatabaseName("UX_point_transactions_athlete_activity_type");
-
-                    b.ToTable("point_transactions", "athletes");
                 });
 
             modelBuilder.Entity("AppKm.Athletes.Domain.Aggregates.StravaConnections.StravaConnection", b =>

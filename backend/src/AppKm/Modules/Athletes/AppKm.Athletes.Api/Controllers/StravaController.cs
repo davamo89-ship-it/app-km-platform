@@ -7,6 +7,7 @@ using AppKm.Athletes.Application.Commands.ConnectStrava;
 using AppKm.Athletes.Application.Queries.GetStravaConnectionStatus;
 using AppKm.Athletes.Application.Commands.DisconnectStrava;
 using AppKm.Athletes.Application.Queries.GetStravaActivities;
+using AppKm.Athletes.Application.Commands.SyncStravaActivities;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -30,6 +31,8 @@ public sealed class StravaController : ControllerBase
     _disconnectHandler;
     private readonly GetStravaActivitiesQueryHandler
     _activitiesHandler;
+    private readonly SyncStravaActivitiesCommandHandler
+    _syncActivitiesHandler;
 
     public StravaController(
     IStravaAuthorizationService authorizationService,
@@ -38,7 +41,8 @@ public sealed class StravaController : ControllerBase
     ConnectStravaCommandHandler connectStravaHandler,
     GetStravaConnectionStatusQueryHandler connectionStatusHandler,
     DisconnectStravaCommandHandler disconnectHandler,
-    GetStravaActivitiesQueryHandler activitiesHandler)
+    GetStravaActivitiesQueryHandler activitiesHandler,
+    SyncStravaActivitiesCommandHandler syncActivitiesHandler)
 {
     _authorizationService =
         authorizationService;
@@ -60,6 +64,9 @@ public sealed class StravaController : ControllerBase
 
     _activitiesHandler =
         activitiesHandler;
+
+    _syncActivitiesHandler =
+        syncActivitiesHandler;
 }
 
     [HttpGet("callback")]
@@ -247,6 +254,57 @@ public sealed class StravaController : ControllerBase
 
             return Ok(result.Value);
         }
+
+        [Authorize(Roles = "Athlete")]
+        [HttpPost("sync")]
+        public async Task<IActionResult> SyncActivities(
+            CancellationToken cancellationToken)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var command =
+                new SyncStravaActivitiesCommand(
+                    userId);
+
+            var result =
+                await _syncActivitiesHandler.HandleAsync(
+                    command,
+                    cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(new
+                {
+                    code = result.Error.Code,
+                    message = result.Error.Message
+                });
+            }
+
+            return Ok(new
+            {
+                retrieved =
+                    result.Value.Retrieved,
+
+                saved =
+                    result.Value.Saved,
+
+                skippedInvalid =
+                    result.Value.SkippedInvalid,
+
+                skippedDuplicate =
+                    result.Value.SkippedDuplicate
+            });
+        }
+
 
     [Authorize(Roles = "Athlete")]
     [HttpDelete("disconnect")]

@@ -96,7 +96,7 @@ Guardar cambios
 ```powershell
 git add .
 
-git commit -m "mensaje"
+git commit -m "Finalización del sprint 6, fase 5 - incluir strava con las fucionalidades esperadas para el login y conexión con el usuario"
 
 git push
 ```

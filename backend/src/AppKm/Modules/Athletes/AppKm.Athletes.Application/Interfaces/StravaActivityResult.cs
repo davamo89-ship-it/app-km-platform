@@ -6,5 +6,6 @@ public sealed record StravaActivityResult(
     string SportType,
     double DistanceMeters,
     DateTimeOffset StartDateUtc,
+    DateTime StartDateLocal,
     int ElapsedTimeSeconds,
     int MovingTimeSeconds);

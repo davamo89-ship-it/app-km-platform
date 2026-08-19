@@ -9,6 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Platform.SharedKernel.Abstractions;
 using AppKm.Athletes.Infrastructure.Strava;
 using AppKm.Athletes.Application.Queries.GetStravaActivities;
+using AppKm.Athletes.Application.Commands.SyncStravaActivities;
+using AppKm.Athletes.Application.Queries.GetPointBalance;
+using AppKm.Athletes.Application.Queries.GetPointHistory;
+using AppKm.Athletes.Application.Queries.GetUpcomingPointExpirations;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -33,6 +37,11 @@ public static class AthleteInfrastructureExtensions
             AthleteRepository>();
 
         services.AddScoped<GetStravaActivitiesQueryHandler>();
+        services.AddScoped<SyncStravaActivitiesCommandHandler>();
+        services.AddScoped<IPointTransactionRepository, PointTransactionRepository>();
+        services.AddScoped<GetPointBalanceQueryHandler>();
+        services.AddScoped<GetPointHistoryQueryHandler>();
+        services.AddScoped<GetUpcomingPointExpirationsQueryHandler>();
 
         services.Configure<StravaOptions>(
             configuration.GetSection(
@@ -87,6 +96,10 @@ public static class AthleteInfrastructureExtensions
         services.AddSingleton<
             IOAuthStateStore,
             InMemoryOAuthStateStore>();
+
+        services.AddScoped<
+            IAthleteActivityRepository,
+            AthleteActivityRepository>();
 
         return services;
     }
