@@ -29,6 +29,52 @@ internal sealed class AthleteActivityRepository
                 cancellationToken);
     }
 
+    public Task<AthleteActivity?> GetLatestAsync(
+    AthleteId athleteId,
+    CancellationToken cancellationToken)
+    {
+        return _dbContext.AthleteActivities
+            .AsNoTracking()
+            .Where(activity =>
+                activity.AthleteId == athleteId)
+            .OrderByDescending(activity =>
+                activity.StartDateUtc)
+            .FirstOrDefaultAsync(
+                cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AthleteActivity>> GetByAthleteAsync(
+    AthleteId athleteId,
+    int page,
+    int pageSize,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.AthleteActivities
+            .AsNoTracking()
+            .Where(activity =>
+                activity.AthleteId == athleteId)
+            .OrderByDescending(activity =>
+                activity.StartDateUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+      public Task<AthleteActivity?> GetByIdAsync(
+    Guid activityId,
+    CancellationToken cancellationToken)
+{
+    AthleteActivityId id =
+        new(activityId);
+
+    return _dbContext.AthleteActivities
+        .AsNoTracking()
+        .FirstOrDefaultAsync(
+            activity =>
+                activity.Id == id,
+            cancellationToken);
+}
+
     public async Task AddAsync(
         AthleteActivity activity,
         CancellationToken cancellationToken)

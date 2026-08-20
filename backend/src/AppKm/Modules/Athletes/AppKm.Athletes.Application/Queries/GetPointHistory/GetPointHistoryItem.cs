@@ -4,4 +4,8 @@ public sealed record GetPointHistoryItem(
     string Type,
     int Points,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? ExpiresAtUtc);
+    DateTimeOffset? ExpiresAtUtc,
+    Guid? AthleteActivityId,
+    long? StravaActivityId,
+    string? ActivityType,
+    double? DistanceKilometers);

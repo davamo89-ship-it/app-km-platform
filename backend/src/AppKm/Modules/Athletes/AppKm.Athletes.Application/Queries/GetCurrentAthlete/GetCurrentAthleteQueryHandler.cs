@@ -40,8 +40,12 @@ public sealed class GetCurrentAthleteQueryHandler
                 athlete.Id.Value,
                 athlete.UserId,
                 athlete.DisplayName,
+                athlete.ProfileImageUrl,
+                athlete.CountryCode,
+                athlete.BirthDate,
+                athlete.PreferredSport,
                 athlete.Status,
                 athlete.CreatedAtUtc,
                 athlete.UpdatedAtUtc));
-    }
+            }
 }

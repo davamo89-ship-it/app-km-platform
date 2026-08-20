@@ -32,6 +32,14 @@ public sealed class Athlete : AggregateRoot<AthleteId>
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
+   
+    public string? ProfileImageUrl { get; private set; }
+
+    public string? CountryCode { get; private set; }
+
+    public DateOnly? BirthDate { get; private set; }
+
+    public string? PreferredSport { get; private set; }
 
     public static Athlete Create(
         AthleteId id,
@@ -107,4 +115,58 @@ public sealed class Athlete : AggregateRoot<AthleteId>
         Status = AthleteStatus.Active;
         UpdatedAtUtc = updatedAtUtc;
     }
+
+    public void UpdateProfile(
+    string displayName,
+    string? profileImageUrl,
+    string? countryCode,
+    DateOnly? birthDate,
+    string? preferredSport,
+    DateTimeOffset updatedAtUtc)
+{
+    ArgumentException.ThrowIfNullOrWhiteSpace(
+        displayName);
+
+    string normalizedDisplayName =
+        displayName.Trim();
+
+    if (normalizedDisplayName.Length > 100)
+    {
+        throw new ArgumentException(
+            "The display name cannot exceed 100 characters.",
+            nameof(displayName));
+    }
+
+    if (!string.IsNullOrWhiteSpace(countryCode) &&
+        countryCode.Trim().Length != 2)
+    {
+        throw new ArgumentException(
+            "CountryCode must use ISO 3166-1 alpha-2 format.",
+            nameof(countryCode));
+    }
+
+    DisplayName =
+        normalizedDisplayName;
+
+    ProfileImageUrl =
+        string.IsNullOrWhiteSpace(profileImageUrl)
+            ? null
+            : profileImageUrl.Trim();
+
+    CountryCode =
+        string.IsNullOrWhiteSpace(countryCode)
+            ? null
+            : countryCode.Trim().ToUpperInvariant();
+
+    BirthDate =
+        birthDate;
+
+    PreferredSport =
+        string.IsNullOrWhiteSpace(preferredSport)
+            ? null
+            : preferredSport.Trim();
+
+    UpdatedAtUtc =
+        updatedAtUtc;
+}
 }

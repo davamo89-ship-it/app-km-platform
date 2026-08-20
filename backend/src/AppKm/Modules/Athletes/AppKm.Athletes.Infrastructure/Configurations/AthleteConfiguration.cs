@@ -49,5 +49,20 @@ internal sealed class AthleteConfiguration
             .IsUnique();
 
         builder.Ignore(athlete => athlete.DomainEvents);
+
+        builder.Property(athlete => athlete.ProfileImageUrl)
+            .HasColumnName("profile_image_url")
+            .HasMaxLength(500);
+
+        builder.Property(athlete => athlete.CountryCode)
+            .HasColumnName("country_code")
+            .HasMaxLength(2);
+
+        builder.Property(athlete => athlete.BirthDate)
+            .HasColumnName("birth_date");
+
+        builder.Property(athlete => athlete.PreferredSport)
+            .HasColumnName("preferred_sport")
+            .HasMaxLength(50);
     }
 }

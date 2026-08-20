@@ -39,9 +39,13 @@ public sealed class UpdateAthleteProfileCommandHandler
 
         try
         {
-            athlete.UpdateDisplayName(
+            athlete.UpdateProfile(
                 command.DisplayName,
-                utcNow);
+                command.ProfileImageUrl,
+                command.CountryCode,
+                command.BirthDate,
+                command.PreferredSport,
+                DateTimeOffset.UtcNow);
         }
         catch (ArgumentException)
         {

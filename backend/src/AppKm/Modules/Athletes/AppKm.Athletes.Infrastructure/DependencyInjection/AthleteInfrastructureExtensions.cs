@@ -15,6 +15,9 @@ using AppKm.Athletes.Application.Queries.GetPointHistory;
 using AppKm.Athletes.Application.Queries.GetUpcomingPointExpirations;
 using AppKm.Athletes.Application.Points;
 using AppKm.Athletes.Application.Commands.ExpirePoints;
+using AppKm.Athletes.Application.Queries.GetAthleteDashboard;
+using AppKm.Athletes.Application.Queries.GetAthleteActivities;
+using AppKm.Athletes.Application.Queries.GetAthleteSettings;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -45,6 +48,9 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<GetPointHistoryQueryHandler>();
         services.AddScoped<GetUpcomingPointExpirationsQueryHandler>();
         services.AddScoped<PointExpirationService>();
+        services.AddScoped<GetAthleteDashboardQueryHandler>();
+        services.AddScoped<GetAthleteActivitiesQueryHandler>();
+        services.AddScoped<GetAthleteSettingsQueryHandler>();
         
 
         services.Configure<StravaOptions>(
