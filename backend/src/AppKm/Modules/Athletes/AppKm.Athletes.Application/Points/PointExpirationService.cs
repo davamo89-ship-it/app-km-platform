@@ -7,12 +7,18 @@ public sealed class PointExpirationService
 {
     private readonly IPointTransactionRepository
         _transactionRepository;
+    
+    private readonly IAthleteUnitOfWork
+        _unitOfWork;
 
     public PointExpirationService(
-        IPointTransactionRepository transactionRepository)
+        IPointTransactionRepository transactionRepository,
+        IAthleteUnitOfWork unitOfWork)
     {
         _transactionRepository =
             transactionRepository;
+        _unitOfWork =
+            unitOfWork;
     }
 
     public async Task<ExpirePointsResult> ExpireAsync(
@@ -67,6 +73,12 @@ public sealed class PointExpirationService
         expiredLots++;
         expiredPoints +=
             lot.RemainingPoints;
+    }
+
+        if (expiredLots > 0)
+    {
+        await _unitOfWork.SaveChangesAsync(
+            cancellationToken);
     }
 
     return new ExpirePointsResult(

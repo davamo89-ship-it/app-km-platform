@@ -13,6 +13,8 @@ using AppKm.Athletes.Application.Commands.SyncStravaActivities;
 using AppKm.Athletes.Application.Queries.GetPointBalance;
 using AppKm.Athletes.Application.Queries.GetPointHistory;
 using AppKm.Athletes.Application.Queries.GetUpcomingPointExpirations;
+using AppKm.Athletes.Application.Points;
+using AppKm.Athletes.Application.Commands.ExpirePoints;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -42,6 +44,8 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<GetPointBalanceQueryHandler>();
         services.AddScoped<GetPointHistoryQueryHandler>();
         services.AddScoped<GetUpcomingPointExpirationsQueryHandler>();
+        services.AddScoped<PointExpirationService>();
+        
 
         services.Configure<StravaOptions>(
             configuration.GetSection(
@@ -80,6 +84,9 @@ public static class AthleteInfrastructureExtensions
         services.AddSingleton<
             IStravaTokenProtector,
             StravaTokenProtector>();
+
+            services.AddScoped<
+            ExpireCurrentAthletePointsCommandHandler>();
 
         services.AddScoped<
              IAthleteUnitOfWork,

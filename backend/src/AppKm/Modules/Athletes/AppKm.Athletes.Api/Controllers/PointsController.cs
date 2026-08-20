@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AppKm.Athletes.Application.Queries.GetPointHistory;
 using AppKm.Athletes.Application.Queries.GetUpcomingPointExpirations;
+using AppKm.Athletes.Application.Points;
+using AppKm.Athletes.Application.Commands.ExpirePoints;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -18,15 +20,23 @@ public sealed class PointsController : ControllerBase
     _historyHandler;
     private readonly GetUpcomingPointExpirationsQueryHandler
     _expirationsHandler;
+    private readonly PointExpirationService
+    _expirationService;
+    private readonly ExpireCurrentAthletePointsCommandHandler
+    _expirePointsHandler;
 
     public PointsController(
         GetPointBalanceQueryHandler balanceHandler,
         GetPointHistoryQueryHandler historyHandler,
-        GetUpcomingPointExpirationsQueryHandler expirationsHandler)
+        GetUpcomingPointExpirationsQueryHandler expirationsHandler,
+        PointExpirationService expirationService,
+        ExpireCurrentAthletePointsCommandHandler expirePointsHandler)
     {
         _balanceHandler = balanceHandler;
         _historyHandler = historyHandler;
         _expirationsHandler = expirationsHandler;
+        _expirationService = expirationService;
+        _expirePointsHandler = expirePointsHandler;
     }
 
     [HttpGet("balance")]
@@ -129,4 +139,42 @@ public sealed class PointsController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpPost("expire")]
+    public async Task<IActionResult> Expire(
+        CancellationToken cancellationToken)
+    {
+        string? userIdValue =
+            User.FindFirst(
+                JwtRegisteredClaimNames.Sub)?.Value;
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out Guid userId))
+        {
+            return Unauthorized();
+        }
+
+        var result =
+            await _expirePointsHandler.HandleAsync(
+                userId,
+                cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(new
+            {
+                code = result.Error.Code,
+                message = result.Error.Message
+            });
+        }
+
+        return Ok(new
+        {
+            expiredLots =
+                result.Value.ExpiredLots,
+
+            expiredPoints =
+                result.Value.ExpiredPoints
+        });
+    }
 }
