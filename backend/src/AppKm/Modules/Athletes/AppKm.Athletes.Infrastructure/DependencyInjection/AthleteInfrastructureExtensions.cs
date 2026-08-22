@@ -18,6 +18,9 @@ using AppKm.Athletes.Application.Commands.ExpirePoints;
 using AppKm.Athletes.Application.Queries.GetAthleteDashboard;
 using AppKm.Athletes.Application.Queries.GetAthleteActivities;
 using AppKm.Athletes.Application.Queries.GetAthleteSettings;
+using AppKm.Athletes.Infrastructure.Redemptions;
+using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
+using AppKm.Athletes.Application.Commands.CompleteRedemption;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -51,6 +54,8 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<GetAthleteDashboardQueryHandler>();
         services.AddScoped<GetAthleteActivitiesQueryHandler>();
         services.AddScoped<GetAthleteSettingsQueryHandler>();
+        services.AddScoped<CreateRedemptionRequestCommandHandler>();
+        services.AddScoped<CompleteRedemptionCommandHandler>();
         
 
         services.Configure<StravaOptions>(
@@ -97,6 +102,14 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<
              IAthleteUnitOfWork,
              AthleteUnitOfWork>();
+
+        services.AddScoped<
+            IRedemptionRequestRepository,
+            RedemptionRequestRepository>();
+        
+        services.AddScoped<
+            IRedemptionCodeGenerator,
+            RedemptionCodeGenerator>();
 
         services.AddScoped<
             IAthleteProfileProvisioner,

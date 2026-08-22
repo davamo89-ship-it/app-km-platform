@@ -111,4 +111,33 @@ public sealed class PointTransaction
             createdAtUtc,
             null);
     }
+
+    public static PointTransaction CreateRedeemed(
+    Guid athleteId,
+    int points,
+    DateTimeOffset createdAtUtc)
+{
+    if (athleteId == Guid.Empty)
+    {
+        throw new ArgumentException(
+            "AthleteId is required.",
+            nameof(athleteId));
+    }
+
+    if (points <= 0)
+    {
+        throw new ArgumentOutOfRangeException(
+            nameof(points),
+            "Redeemed points must be greater than zero.");
+    }
+
+    return new PointTransaction(
+        PointTransactionId.New(),
+        athleteId,
+        null,
+        PointTransactionType.Redeemed,
+        points,
+        createdAtUtc,
+        null);
+}
 }

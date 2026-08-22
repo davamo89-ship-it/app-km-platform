@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using AppKm.Athletes.Domain.Aggregates.StravaConnections;
 using AppKm.Athletes.Domain.Aggregates.AthleteActivities;
 using AppKm.Athletes.Domain.Aggregates.PointTransactions;
+using AppKm.Athletes.Domain.Aggregates.RedemptionRequests;
 
 namespace AppKm.Athletes.Infrastructure.Persistence;
 
@@ -21,6 +22,8 @@ public sealed class AthleteDbContext : DbContext
     Set<AthleteActivity>();
     public DbSet<PointTransaction> PointTransactions =>
     Set<PointTransaction>();
+    public DbSet<RedemptionRequest> RedemptionRequests =>
+    Set<RedemptionRequest>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
