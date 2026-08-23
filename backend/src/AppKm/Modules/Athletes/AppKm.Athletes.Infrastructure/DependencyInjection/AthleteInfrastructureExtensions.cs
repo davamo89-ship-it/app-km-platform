@@ -23,6 +23,10 @@ using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
 using AppKm.Athletes.Application.Commands.CancelRedemption;
 using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
+using AppKm.Athletes.Application.Queries.GetMerchantProfile;
+using AppKm.Athletes.Application.Queries.ValidateMerchantRedemption;
+using AppKm.Athletes.Application.Commands.ProposeMerchantRedemption;
+using AppKm.Athletes.Application.Commands.ConfirmAthleteRedemption;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -60,7 +64,10 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<CompleteRedemptionCommandHandler>();
         services.AddScoped<CancelRedemptionCommandHandler>();
         services.AddScoped<GetRedemptionRequestsQueryHandler>();
-        
+        services.AddScoped<GetMerchantProfileQueryHandler>();
+        services.AddScoped<ValidateMerchantRedemptionQueryHandler>();
+        services.AddScoped<ProposeMerchantRedemptionCommandHandler>();
+        services.AddScoped<ConfirmAthleteRedemptionCommandHandler>();
 
         services.Configure<StravaOptions>(
             configuration.GetSection(
@@ -130,6 +137,10 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<
             IAthleteActivityRepository,
             AthleteActivityRepository>();
+        
+        services.AddScoped<
+            IMerchantRepository,
+            MerchantRepository>();
 
         return services;
     }

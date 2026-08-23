@@ -44,7 +44,7 @@ internal sealed class RedemptionRequestConfiguration
                 request.Status)
             .HasConversion<string>()
             .HasColumnName("status")
-            .HasMaxLength(20)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(request =>
@@ -66,5 +66,21 @@ internal sealed class RedemptionRequestConfiguration
             .IsUnique()
             .HasDatabaseName(
                 "UX_redemption_requests_code");
+
+        builder.Property(request =>
+        request.MerchantId)
+              .HasColumnName("merchant_id");
+
+        builder.Property(request =>
+                request.ProposedPoints)
+            .HasColumnName("proposed_points");
+
+        builder.Property(request =>
+                request.MerchantProposedAtUtc)
+            .HasColumnName("merchant_proposed_at_utc");
+
+        builder.Property(request =>
+                request.AthleteConfirmedAtUtc)
+            .HasColumnName("athlete_confirmed_at_utc");
     }
 }

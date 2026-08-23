@@ -42,6 +42,14 @@ public sealed class RedemptionRequest
 
     public DateTimeOffset? CompletedAtUtc { get; private set; }
 
+    public Guid? MerchantId { get; private set; }
+
+    public int? ProposedPoints { get; private set; }
+
+    public DateTimeOffset? MerchantProposedAtUtc { get; private set; }
+
+    public DateTimeOffset? AthleteConfirmedAtUtc { get; private set; }
+
     public static RedemptionRequest Create(
         Guid athleteId,
         string code,
@@ -80,24 +88,24 @@ public sealed class RedemptionRequest
             expiresAtUtc);
     }
 
-    public void Complete(
+     public void Complete(
         DateTimeOffset completedAtUtc)
-    {
-        if (Status != RedemptionRequestStatus.Pending)
         {
-            throw new InvalidOperationException(
-                "Only pending redemption requests can be completed.");
-        }
+            if (Status != RedemptionRequestStatus.AwaitingAthleteConfirmation)
+            {
+                throw new InvalidOperationException(
+                    "Only redemption requests awaiting athlete confirmation can be completed.");
+            }
 
-        if (completedAtUtc > ExpiresAtUtc)
-        {
-            throw new InvalidOperationException(
-                "The redemption request has expired.");
-        }
+            if (AthleteConfirmedAtUtc is null)
+            {
+                throw new InvalidOperationException(
+                    "The athlete must confirm the redemption before completion.");
+            }
 
-        Status = RedemptionRequestStatus.Completed;
-        CompletedAtUtc = completedAtUtc;
-    }
+            Status = RedemptionRequestStatus.Completed;
+            CompletedAtUtc = completedAtUtc;
+        }
         public void Expire(
             DateTimeOffset expiredAtUtc)
         {
@@ -117,13 +125,74 @@ public sealed class RedemptionRequest
         }
         public void Cancel()
         {
-            if (Status != RedemptionRequestStatus.Pending)
+            if (Status != RedemptionRequestStatus.Pending &&
+                Status != RedemptionRequestStatus.AwaitingAthleteConfirmation)
             {
                 throw new InvalidOperationException(
                     "Only pending redemption requests can be cancelled.");
             }
 
             Status = RedemptionRequestStatus.Cancelled;
+        }
+
+        public void ProposeByMerchant(
+        Guid merchantId,
+        int proposedPoints,
+        DateTimeOffset proposedAtUtc)
+    {
+        if (Status != RedemptionRequestStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                "Only pending redemption requests can receive a merchant proposal.");
+        }
+
+        if (merchantId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "MerchantId is required.",
+                nameof(merchantId));
+        }
+
+        if (proposedPoints <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(proposedPoints),
+                "Proposed points must be greater than zero.");
+        }
+
+        if (proposedAtUtc > ExpiresAtUtc)
+        {
+            throw new InvalidOperationException(
+                "The redemption request has expired.");
+        }
+
+        MerchantId = merchantId;
+        ProposedPoints = proposedPoints;
+        MerchantProposedAtUtc = proposedAtUtc;
+        Status = RedemptionRequestStatus.AwaitingAthleteConfirmation;
+    }
+    public void ConfirmByAthlete(
+        DateTimeOffset confirmedAtUtc)
+    {
+        if (Status != RedemptionRequestStatus.AwaitingAthleteConfirmation)
+        {
+            throw new InvalidOperationException(
+                "The redemption request is not awaiting athlete confirmation.");
+        }
+
+        AthleteConfirmedAtUtc = confirmedAtUtc;
+    }
+
+    public void RejectByAthlete(DateTimeOffset rejectedAtUtc)
+        {
+            if (Status != RedemptionRequestStatus.AwaitingAthleteConfirmation)
+            {
+                throw new InvalidOperationException(
+                    "Only redemption requests awaiting athlete confirmation can be rejected.");
+            }
+
+            Status = RedemptionRequestStatus.Cancelled;
+            CompletedAtUtc = rejectedAtUtc;
         }
 
 }

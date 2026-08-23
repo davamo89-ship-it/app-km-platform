@@ -1,0 +1,39 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
+{
+    /// <inheritdoc />
+    public partial class ExpandRedemptionRequestStatusLength : Migration
+    {
+        /// <inheritdoc />
+       protected override void Up(MigrationBuilder migrationBuilder)
+{
+    migrationBuilder.AlterColumn<string>(
+        name: "status",
+        schema: "athletes",
+        table: "redemption_requests",
+        type: "character varying(50)",
+        maxLength: 50,
+        nullable: false,
+        oldClrType: typeof(string),
+        oldType: "character varying(20)",
+        oldMaxLength: 20);
+}
+
+protected override void Down(MigrationBuilder migrationBuilder)
+{
+    migrationBuilder.AlterColumn<string>(
+        name: "status",
+        schema: "athletes",
+        table: "redemption_requests",
+        type: "character varying(20)",
+        maxLength: 20,
+        nullable: false,
+        oldClrType: typeof(string),
+        oldType: "character varying(50)",
+        oldMaxLength: 50);
+}
+    }
+}

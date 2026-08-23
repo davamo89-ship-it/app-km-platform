@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
 using AppKm.Athletes.Application.Commands.CancelRedemption;
 using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
+using AppKm.Athletes.Application.Commands.ConfirmAthleteRedemption;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -25,17 +26,22 @@ public sealed class RedemptionsController : ControllerBase
         
     private readonly GetRedemptionRequestsQueryHandler
         _getRequestsHandler;
+    
+    private readonly ConfirmAthleteRedemptionCommandHandler
+        _confirmAthleteRedemptionHandler;
 
     public RedemptionsController(
         CreateRedemptionRequestCommandHandler createHandler,
         CompleteRedemptionCommandHandler completeHandler,
         CancelRedemptionCommandHandler cancelHandler,
-        GetRedemptionRequestsQueryHandler getRequestsHandler)
+        GetRedemptionRequestsQueryHandler getRequestsHandler,
+        ConfirmAthleteRedemptionCommandHandler confirmAthleteRedemptionHandler)
     {
         _createHandler = createHandler;
         _completeHandler = completeHandler;
         _cancelHandler = cancelHandler;
         _getRequestsHandler = getRequestsHandler;
+        _confirmAthleteRedemptionHandler = confirmAthleteRedemptionHandler;
     }
 
     [HttpPost]
@@ -158,6 +164,43 @@ public sealed class RedemptionsController : ControllerBase
             var result =
                 await _getRequestsHandler.HandleAsync(
                     userId,
+                    cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(new
+                {
+                    code = result.Error.Code,
+                    message = result.Error.Message
+                });
+            }
+
+            return Ok(result.Value);
+        }
+        [HttpPost("{code}/confirm")]
+        public async Task<IActionResult> ConfirmByAthlete(
+            string code,
+            CancellationToken cancellationToken)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var command =
+                new ConfirmAthleteRedemptionCommand(
+                    userId,
+                    code);
+
+            var result =
+                await _confirmAthleteRedemptionHandler.HandleAsync(
+                    command,
                     cancellationToken);
 
             if (result.IsFailure)

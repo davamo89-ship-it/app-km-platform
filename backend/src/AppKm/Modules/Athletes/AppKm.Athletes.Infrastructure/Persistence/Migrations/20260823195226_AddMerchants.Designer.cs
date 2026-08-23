@@ -3,6 +3,7 @@ using System;
 using AppKm.Athletes.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AthleteDbContext))]
-    partial class AthleteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823195226_AddMerchants")]
+    partial class AddMerchants
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -222,10 +225,6 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateTimeOffset?>("AthleteConfirmedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("athlete_confirmed_at_utc");
-
                     b.Property<Guid>("AthleteId")
                         .HasColumnType("uuid")
                         .HasColumnName("athlete_id");
@@ -248,26 +247,14 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at_utc");
 
-                    b.Property<Guid?>("MerchantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("merchant_id");
-
-                    b.Property<DateTimeOffset?>("MerchantProposedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("merchant_proposed_at_utc");
-
-                    b.Property<int?>("ProposedPoints")
-                        .HasColumnType("integer")
-                        .HasColumnName("proposed_points");
-
                     b.Property<int>("RequestedPoints")
                         .HasColumnType("integer")
                         .HasColumnName("requested_points");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
                     b.HasKey("Id");

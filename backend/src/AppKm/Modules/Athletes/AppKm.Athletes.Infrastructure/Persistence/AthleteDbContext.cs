@@ -4,6 +4,7 @@ using AppKm.Athletes.Domain.Aggregates.StravaConnections;
 using AppKm.Athletes.Domain.Aggregates.AthleteActivities;
 using AppKm.Athletes.Domain.Aggregates.PointTransactions;
 using AppKm.Athletes.Domain.Aggregates.RedemptionRequests;
+using AppKm.Athletes.Domain.Aggregates.Merchants;
 
 namespace AppKm.Athletes.Infrastructure.Persistence;
 
@@ -24,6 +25,8 @@ public sealed class AthleteDbContext : DbContext
     Set<PointTransaction>();
     public DbSet<RedemptionRequest> RedemptionRequests =>
     Set<RedemptionRequest>();
+    public DbSet<Merchant> Merchants =>
+    Set<Merchant>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
