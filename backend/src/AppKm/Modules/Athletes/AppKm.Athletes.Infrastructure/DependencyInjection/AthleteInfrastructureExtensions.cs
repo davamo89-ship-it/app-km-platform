@@ -21,6 +21,8 @@ using AppKm.Athletes.Application.Queries.GetAthleteSettings;
 using AppKm.Athletes.Infrastructure.Redemptions;
 using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
+using AppKm.Athletes.Application.Commands.CancelRedemption;
+using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
 
 namespace AppKm.Athletes.Infrastructure.DependencyInjection;
 
@@ -56,6 +58,8 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<GetAthleteSettingsQueryHandler>();
         services.AddScoped<CreateRedemptionRequestCommandHandler>();
         services.AddScoped<CompleteRedemptionCommandHandler>();
+        services.AddScoped<CancelRedemptionCommandHandler>();
+        services.AddScoped<GetRedemptionRequestsQueryHandler>();
         
 
         services.Configure<StravaOptions>(

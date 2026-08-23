@@ -45,4 +45,30 @@ internal sealed class RedemptionRequestRepository
             request,
             cancellationToken);
     }
+
+    public async Task<IReadOnlyList<RedemptionRequest>> GetByAthleteAsync(
+            Guid athleteId,
+            CancellationToken cancellationToken)
+        {
+            return await _dbContext.RedemptionRequests
+                .Where(request =>
+                    request.AthleteId == athleteId)
+                .OrderByDescending(request =>
+                    request.CreatedAtUtc)
+                .ToListAsync(cancellationToken);
+        }
+    public Task<int> GetPendingReservedPointsAsync(
+    Guid athleteId,
+    DateTimeOffset now,
+    CancellationToken cancellationToken)
+        {
+            return _dbContext.RedemptionRequests
+                .Where(request =>
+                    request.AthleteId == athleteId &&
+                    request.Status == RedemptionRequestStatus.Pending &&
+                    request.ExpiresAtUtc > now)
+                .SumAsync(
+                    request => request.RequestedPoints,
+                    cancellationToken);
+        }
 }

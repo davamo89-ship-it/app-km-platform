@@ -56,17 +56,29 @@ public sealed class CreateRedemptionRequestCommandHandler
                     "The athlete profile was not found."));
         }
 
+       DateTimeOffset now =
+           DateTimeOffset.UtcNow;
+
         int balance =
             await _pointTransactionRepository.GetBalanceAsync(
                 athlete.Id.Value,
                 cancellationToken);
 
-        if (command.RequestedPoints > balance)
+        int reservedPoints =
+            await _redemptionRequestRepository.GetPendingReservedPointsAsync(
+                athlete.Id.Value,
+                now,
+                cancellationToken);
+
+        int availableBalance =
+            balance - reservedPoints;
+
+        if (command.RequestedPoints > availableBalance)
         {
             return Result<CreateRedemptionRequestResult>.Failure(
                 new Error(
-                    "Athletes.Redemption.InsufficientBalance",
-                    "The athlete does not have enough points."));
+                    "Athletes.Redemption.InsufficientAvailableBalance",
+                    "The athlete does not have enough available points."));
         }
 
         string code;
@@ -77,10 +89,7 @@ public sealed class CreateRedemptionRequestCommandHandler
         }
         while (await _redemptionRequestRepository.ExistsByCodeAsync(
             code,
-            cancellationToken));
-
-        DateTimeOffset now =
-            DateTimeOffset.UtcNow;
+            cancellationToken));       
 
         DateTimeOffset expiresAtUtc =
             now.Add(CodeLifetime);

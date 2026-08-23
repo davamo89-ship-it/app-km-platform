@@ -4,6 +4,8 @@ using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
+using AppKm.Athletes.Application.Commands.CancelRedemption;
+using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -17,13 +19,23 @@ public sealed class RedemptionsController : ControllerBase
         
     private readonly CompleteRedemptionCommandHandler
         _completeHandler;
+    
+    private readonly CancelRedemptionCommandHandler
+        _cancelHandler;
+        
+    private readonly GetRedemptionRequestsQueryHandler
+        _getRequestsHandler;
 
     public RedemptionsController(
         CreateRedemptionRequestCommandHandler createHandler,
-        CompleteRedemptionCommandHandler completeHandler)
+        CompleteRedemptionCommandHandler completeHandler,
+        CancelRedemptionCommandHandler cancelHandler,
+        GetRedemptionRequestsQueryHandler getRequestsHandler)
     {
         _createHandler = createHandler;
         _completeHandler = completeHandler;
+        _cancelHandler = cancelHandler;
+        _getRequestsHandler = getRequestsHandler;
     }
 
     [HttpPost]
@@ -89,4 +101,74 @@ public sealed class RedemptionsController : ControllerBase
 
         return Ok(result.Value);
     }
+
+    [HttpPost("cancel")]
+    public async Task<IActionResult> Cancel(
+        CancelRedemptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        string? userIdValue =
+            User.FindFirst(
+                JwtRegisteredClaimNames.Sub)?.Value;
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out Guid userId))
+        {
+            return Unauthorized();
+        }
+
+        var command =
+            new CancelRedemptionCommand(
+                userId,
+                request.Code);
+
+        var result =
+            await _cancelHandler.HandleAsync(
+                command,
+                cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(new
+            {
+                code = result.Error.Code,
+                message = result.Error.Message
+            });
+        }
+
+        return Ok(result.Value);
+    }
+
+            [HttpGet]
+        public async Task<IActionResult> GetAll(
+            CancellationToken cancellationToken)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var result =
+                await _getRequestsHandler.HandleAsync(
+                    userId,
+                    cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(new
+                {
+                    code = result.Error.Code,
+                    message = result.Error.Message
+                });
+            }
+
+            return Ok(result.Value);
+        }
 }

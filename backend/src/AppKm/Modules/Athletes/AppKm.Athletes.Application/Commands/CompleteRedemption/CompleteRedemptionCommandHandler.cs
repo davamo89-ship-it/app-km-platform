@@ -59,12 +59,17 @@ public sealed class CompleteRedemptionCommandHandler
             DateTimeOffset.UtcNow;
 
         if (now > request.ExpiresAtUtc)
-        {
-            return Result<CompleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.Expired",
-                    "The redemption request has expired."));
-        }
+            {
+                request.Expire(now);
+
+                await _unitOfWork.SaveChangesAsync(
+                    cancellationToken);
+
+                return Result<CompleteRedemptionResult>.Failure(
+                    new Error(
+                        "Athletes.Redemption.Expired",
+                        "The redemption request has expired."));
+            }
 
         int balance =
             await _pointTransactionRepository.GetBalanceAsync(

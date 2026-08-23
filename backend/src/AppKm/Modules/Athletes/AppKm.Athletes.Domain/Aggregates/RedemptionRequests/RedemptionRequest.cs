@@ -98,4 +98,32 @@ public sealed class RedemptionRequest
         Status = RedemptionRequestStatus.Completed;
         CompletedAtUtc = completedAtUtc;
     }
+        public void Expire(
+            DateTimeOffset expiredAtUtc)
+        {
+            if (Status != RedemptionRequestStatus.Pending)
+            {
+                throw new InvalidOperationException(
+                    "Only pending redemption requests can expire.");
+            }
+
+            if (expiredAtUtc <= ExpiresAtUtc)
+            {
+                throw new InvalidOperationException(
+                    "The redemption request has not expired yet.");
+            }
+
+            Status = RedemptionRequestStatus.Expired;
+        }
+        public void Cancel()
+        {
+            if (Status != RedemptionRequestStatus.Pending)
+            {
+                throw new InvalidOperationException(
+                    "Only pending redemption requests can be cancelled.");
+            }
+
+            Status = RedemptionRequestStatus.Cancelled;
+        }
+
 }
