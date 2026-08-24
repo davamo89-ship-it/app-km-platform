@@ -194,5 +194,4 @@ public sealed class RedemptionRequest
             Status = RedemptionRequestStatus.Cancelled;
             CompletedAtUtc = rejectedAtUtc;
         }
-
 }

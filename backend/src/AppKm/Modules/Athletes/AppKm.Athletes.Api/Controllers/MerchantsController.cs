@@ -10,7 +10,7 @@ namespace AppKm.Athletes.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/merchants")]
-[Authorize]
+[Authorize(Roles = "Merchant")]
 public sealed class MerchantsController : ControllerBase
 {
     private readonly GetMerchantProfileQueryHandler _getMerchantProfileHandler;

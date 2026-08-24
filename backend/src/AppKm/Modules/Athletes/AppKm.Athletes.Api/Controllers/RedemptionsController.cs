@@ -7,6 +7,8 @@ using AppKm.Athletes.Application.Commands.CompleteRedemption;
 using AppKm.Athletes.Application.Commands.CancelRedemption;
 using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
 using AppKm.Athletes.Application.Commands.ConfirmAthleteRedemption;
+using AppKm.Athletes.Application.Commands.RejectAthleteRedemption;
+using AppKm.Athletes.Application.Queries.GetPendingRedemptionConfirmation;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -29,19 +31,29 @@ public sealed class RedemptionsController : ControllerBase
     
     private readonly ConfirmAthleteRedemptionCommandHandler
         _confirmAthleteRedemptionHandler;
+    
+    private readonly RejectAthleteRedemptionCommandHandler
+    _rejectAthleteRedemptionHandler;
+
+    private readonly GetPendingRedemptionConfirmationQueryHandler
+    _getPendingConfirmationHandler;
 
     public RedemptionsController(
         CreateRedemptionRequestCommandHandler createHandler,
         CompleteRedemptionCommandHandler completeHandler,
         CancelRedemptionCommandHandler cancelHandler,
         GetRedemptionRequestsQueryHandler getRequestsHandler,
-        ConfirmAthleteRedemptionCommandHandler confirmAthleteRedemptionHandler)
+        ConfirmAthleteRedemptionCommandHandler confirmAthleteRedemptionHandler,
+        RejectAthleteRedemptionCommandHandler rejectAthleteRedemptionHandler,
+        GetPendingRedemptionConfirmationQueryHandler getPendingConfirmationHandler)
     {
         _createHandler = createHandler;
         _completeHandler = completeHandler;
         _cancelHandler = cancelHandler;
         _getRequestsHandler = getRequestsHandler;
         _confirmAthleteRedemptionHandler = confirmAthleteRedemptionHandler;
+        _rejectAthleteRedemptionHandler = rejectAthleteRedemptionHandler;
+        _getPendingConfirmationHandler = getPendingConfirmationHandler;
     }
 
     [HttpPost]
@@ -146,7 +158,7 @@ public sealed class RedemptionsController : ControllerBase
         return Ok(result.Value);
     }
 
-            [HttpGet]
+        [HttpGet]
         public async Task<IActionResult> GetAll(
             CancellationToken cancellationToken)
         {
@@ -177,6 +189,7 @@ public sealed class RedemptionsController : ControllerBase
 
             return Ok(result.Value);
         }
+
         [HttpPost("{code}/confirm")]
         public async Task<IActionResult> ConfirmByAthlete(
             string code,
@@ -213,5 +226,80 @@ public sealed class RedemptionsController : ControllerBase
             }
 
             return Ok(result.Value);
+        }
+
+        [HttpPost("{code}/reject")]
+        public async Task<IActionResult> RejectByAthlete(
+            string code,
+            CancellationToken cancellationToken)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var command =
+                new RejectAthleteRedemptionCommand(
+                    userId,
+                    code);
+
+            var result =
+                await _rejectAthleteRedemptionHandler.HandleAsync(
+                    command,
+                    cancellationToken);
+
+            if (result.IsFailure)
+            {
+                return BadRequest(new
+                {
+                    code = result.Error.Code,
+                    message = result.Error.Message
+                });
+            }
+
+            return Ok(result.Value);
+        }
+    [HttpGet("pending-confirmation")]
+        public async Task<IActionResult> GetPendingConfirmation(
+            CancellationToken cancellationToken)
+        {
+            string? userIdValue =
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (!Guid.TryParse(
+                    userIdValue,
+                    out Guid userId))
+            {
+                return Unauthorized();
+            }
+
+            var result =
+                await _getPendingConfirmationHandler.HandleAsync(
+                    userId,
+                    cancellationToken);
+
+            if (result.IsFailure)
+                {
+                    if (result.Error.Code ==
+                        "Athletes.Redemption.NoPendingConfirmation")
+                    {
+                        return NoContent();
+                    }
+
+                    return BadRequest(new
+                    {
+                        code = result.Error.Code,
+                        message = result.Error.Message
+                    });
+                }
+
+                return Ok(result.Value);
         }
 }

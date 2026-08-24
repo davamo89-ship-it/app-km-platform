@@ -23,4 +23,7 @@ public interface IRedemptionRequestRepository
         Guid athleteId,
         DateTimeOffset now,
         CancellationToken cancellationToken);
-    }
+    Task<RedemptionRequest?> GetPendingConfirmationByAthleteAsync(
+        Guid athleteId,
+        CancellationToken cancellationToken);
+}

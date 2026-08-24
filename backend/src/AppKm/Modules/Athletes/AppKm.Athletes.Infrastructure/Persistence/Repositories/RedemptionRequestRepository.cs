@@ -71,4 +71,17 @@ internal sealed class RedemptionRequestRepository
                     request => request.RequestedPoints,
                     cancellationToken);
         }
+            public Task<RedemptionRequest?> GetPendingConfirmationByAthleteAsync(
+            Guid athleteId,
+            CancellationToken cancellationToken)
+        {
+            return _dbContext.RedemptionRequests
+                .Where(request =>
+                    request.AthleteId == athleteId &&
+                    request.Status ==
+                        RedemptionRequestStatus.AwaitingAthleteConfirmation)
+                .OrderByDescending(request =>
+                    request.MerchantProposedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 }
