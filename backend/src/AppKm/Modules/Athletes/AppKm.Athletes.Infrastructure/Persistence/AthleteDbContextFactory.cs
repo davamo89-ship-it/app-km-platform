@@ -12,12 +12,14 @@ public sealed class AthleteDbContextFactory
         var optionsBuilder =
             new DbContextOptionsBuilder<AthleteDbContext>();
 
-        const string connectionString =
-            "Host=localhost;" +
-            "Port=5432;" +
-            "Database=appkm;" +
-            "Username=appkm;" +
-            "Password=appkm";
+        string connectionString =
+            Environment.GetEnvironmentVariable(
+                "ConnectionStrings__AthleteDatabase")
+            ?? "Host=localhost;" +
+               "Port=5432;" +
+               "Database=appkm;" +
+               "Username=appkm;" +
+               "Password=appkm";
 
         optionsBuilder.UseNpgsql(
             connectionString);
