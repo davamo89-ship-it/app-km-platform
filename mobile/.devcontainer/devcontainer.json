@@ -1,0 +1,25 @@
+{
+  "name": "App KM Flutter",
+
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+
+  "postCreateCommand": "git clone https://github.com/flutter/flutter.git -b stable /opt/flutter && echo 'export PATH=/opt/flutter/bin:$PATH' >> ~/.bashrc && export PATH=/opt/flutter/bin:$PATH && flutter doctor",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Dart-Code.flutter",
+        "Dart-Code.dart-code",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ]
+    }
+  }
+}
