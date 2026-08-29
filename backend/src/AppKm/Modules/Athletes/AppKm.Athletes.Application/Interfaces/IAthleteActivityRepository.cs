@@ -14,6 +14,11 @@ public interface IAthleteActivityRepository
         AthleteId athleteId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<AthleteActivity>> GetAllByAthleteAsync(
+        AthleteId athleteId,
+        CancellationToken cancellationToken);
+
+
     Task<IReadOnlyList<AthleteActivity>> GetByAthleteAsync(
         AthleteId athleteId,
         int page,

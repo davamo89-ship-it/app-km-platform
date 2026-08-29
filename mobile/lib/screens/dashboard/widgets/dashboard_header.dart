@@ -3,7 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 
 class DashboardHeader extends StatelessWidget {
-  const DashboardHeader({super.key, required this.onNotificationsPressed});
+    const DashboardHeader({
+    super.key,
+    required this.displayName,
+    required this.onNotificationsPressed,
+  });
+
+  final String displayName;
 
   final VoidCallback onNotificationsPressed;
 
@@ -32,22 +38,25 @@ class DashboardHeader extends StatelessWidget {
             child: const Icon(Icons.person, color: Colors.white, size: 30),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Hola, David',
-                  style: TextStyle(
+                  'Hola, $displayName',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 3),
-                Text(
+                const SizedBox(height: 3),
+                const Text(
                   'Sigue sumando kilómetros',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),

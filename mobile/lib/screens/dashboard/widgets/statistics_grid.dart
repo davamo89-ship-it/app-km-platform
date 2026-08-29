@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../../../models/dashboard_summary.dart';
+import '../../../models/athletes/athlete_dashboard.dart';
 import 'statistic_card.dart';
 
 class StatisticsGrid extends StatelessWidget {
   const StatisticsGrid({
     super.key,
-    required this.summary,
+    required this.dashboard,
     required this.isLoading,
     required this.formatKilometers,
   });
 
-  final DashboardSummary summary;
+  final AthleteDashboard dashboard;
   final bool isLoading;
   final String Function(double value) formatKilometers;
 
@@ -24,7 +24,7 @@ class StatisticsGrid extends StatelessWidget {
             Expanded(
               child: StatisticCard(
                 icon: Icons.route_outlined,
-                value: formatKilometers(summary.totalKilometers),
+                value: formatKilometers(dashboard.totalKilometers),
                 unit: 'km',
                 label: 'Kilómetros',
                 isLoading: isLoading,
@@ -34,8 +34,8 @@ class StatisticsGrid extends StatelessWidget {
             Expanded(
               child: StatisticCard(
                 icon: Icons.local_fire_department_outlined,
-                value: summary.currentStreakDays.toString(),
-                unit: summary.currentStreakDays == 1 ? 'día' : 'días',
+                value: dashboard.currentStreakDays.toString(),
+                unit: dashboard.currentStreakDays == 1 ? 'día' : 'días',
                 label: 'Racha actual',
                 isLoading: isLoading,
               ),
@@ -48,9 +48,9 @@ class StatisticsGrid extends StatelessWidget {
             Expanded(
               child: StatisticCard(
                 icon: Icons.flag_outlined,
-                value: formatKilometers(summary.monthlyKilometers),
-                unit: '/ ${formatKilometers(summary.monthlyGoalKilometers)} km',
-                label: 'Meta mensual',
+                value: formatKilometers(dashboard.monthlyKilometers),
+                unit: 'km',
+                label: 'Este mes',
                 isLoading: isLoading,
               ),
             ),
@@ -58,7 +58,7 @@ class StatisticsGrid extends StatelessWidget {
             Expanded(
               child: StatisticCard(
                 icon: Icons.directions_run_outlined,
-                value: summary.approvedActivities.toString(),
+                value: dashboard.approvedActivities.toString(),
                 unit: '',
                 label: 'Actividades',
                 isLoading: isLoading,

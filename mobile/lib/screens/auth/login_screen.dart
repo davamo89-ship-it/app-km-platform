@@ -5,6 +5,8 @@ import '../../core/app_dependencies.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/strava/strava_connection_controller.dart';
+import '../../services/auth/auth_api_service.dart';
+import '../../services/auth/auth_token_store.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,6 +14,10 @@ class LoginScreen extends StatefulWidget {
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
+  late final AuthApiService _authApiService;
+  late final AuthTokenStore _authTokenStore;
+
+  bool _isLoggingIn = false;
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
@@ -27,6 +33,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _authApiService = AuthApiService();
+    _authTokenStore = AuthTokenStore();
 
     final dependencies = AppDependencies.instance;
 
@@ -56,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.dispose();
 
     super.dispose();
+    _authApiService.dispose();
   }
 
   void _handleStravaConnectionChange() {
@@ -103,10 +112,31 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _login() {
-    final formState = _formKey.currentState;
+Future<void> _login() async {
+  final formState = _formKey.currentState;
 
-    if (formState == null || !formState.validate()) {
+  if (formState == null || !formState.validate()) {
+    return;
+  }
+
+  if (_isLoggingIn) {
+    return;
+  }
+
+  setState(() {
+    _isLoggingIn = true;
+  });
+
+  try {
+    final result = await _authApiService.login(
+      email: _emailController.text,
+      password: _passwordController.text,      
+    );
+    await _authTokenStore.saveSession(result);
+
+    debugPrint('Login correcto: ${result.email}');
+
+    if (!mounted) {
       return;
     }
 
@@ -114,7 +144,40 @@ class _LoginScreenState extends State<LoginScreen> {
       context,
       AppRoutes.dashboard,
     );
+  } on AuthApiException catch (error) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+        ),
+      );
+  } catch (error) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No fue posible conectar con el servidor.',
+          ),
+        ),
+      );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isLoggingIn = false;
+      });
+    }
   }
+}
 
   Future<void> _continueWithStrava() async {
     if (_openingStrava ||
@@ -354,14 +417,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 8),
                             ElevatedButton(
-                              onPressed: _login,
-                              child: const Text(
-                                'Iniciar sesión',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              onPressed: _isLoggingIn ? null : _login,
+                              child: _isLoggingIn
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Iniciar sesión',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
                             ),
                             const SizedBox(height: 20),
                             const Row(

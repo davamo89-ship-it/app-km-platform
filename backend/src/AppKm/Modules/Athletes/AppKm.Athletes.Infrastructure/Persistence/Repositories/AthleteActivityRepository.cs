@@ -43,6 +43,19 @@ internal sealed class AthleteActivityRepository
                 cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AthleteActivity>> GetAllByAthleteAsync(
+    AthleteId athleteId,
+    CancellationToken cancellationToken)
+            {
+                return await _dbContext.AthleteActivities
+                    .AsNoTracking()
+                    .Where(activity =>
+                        activity.AthleteId == athleteId)
+                    .OrderByDescending(activity =>
+                        activity.StartDateUtc)
+                    .ToListAsync(cancellationToken);
+            }
+
     public async Task<IReadOnlyList<AthleteActivity>> GetByAthleteAsync(
     AthleteId athleteId,
     int page,

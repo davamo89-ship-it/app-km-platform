@@ -8,4 +8,8 @@ public sealed record GetAthleteDashboardResult(
     bool StravaConnected,
     string? StravaStatus,
     DashboardActivityResult? LastActivity,
-    int PointsExpiringSoon);
+    int PointsExpiringSoon,
+    double TotalKilometers,
+    int ApprovedActivities,
+    int CurrentStreakDays,
+    double MonthlyKilometers);

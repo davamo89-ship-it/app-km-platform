@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/app_dependencies.dart';
-import '../../models/dashboard_summary.dart';
-import '../../services/dashboard_service.dart';
 import '../../services/strava/strava_connection_controller.dart';
 import '../../services/strava/strava_oauth_launcher.dart';
 import '../../services/strava/strava_sync_controller.dart';
+import '../../models/athletes/athlete_dashboard.dart';
+import '../../services/athletes/athlete_api_service.dart';
+
 
 class DashboardController extends ChangeNotifier {
   DashboardController({
@@ -17,7 +18,7 @@ class DashboardController extends ChangeNotifier {
     _connectionController = resolvedDependencies.stravaConnectionController;
     _syncController = resolvedDependencies.stravaSyncController;
     _oauthLauncher = resolvedDependencies.stravaOAuthLauncher;
-    _dashboardService = resolvedDependencies.dashboardService;
+    _athleteApiService = AthleteApiService();
 
     _connectionController.addListener(_handleExternalChange);
     _syncController.addListener(_handleExternalChange);
@@ -28,17 +29,23 @@ class DashboardController extends ChangeNotifier {
   late final StravaConnectionController _connectionController;
   late final StravaSyncController _syncController;
   late final StravaOAuthLauncher _oauthLauncher;
-  late final DashboardService _dashboardService;
+  late final AthleteApiService _athleteApiService;
+  
+  AthleteDashboard? _athleteDashboard;
+  bool _isLoadingAthleteDashboard = true;
+  String? _athleteDashboardError;
 
-  DashboardSummary _summary = DashboardSummary.empty();
-  bool _isLoadingSummary = true;
-  String? _dashboardError;
+  StravaConnectionStatus get effectiveConnectionStatus {
+    if (_isLoadingAthleteDashboard) {
+      return StravaConnectionStatus.checking;
+    }
 
-  DashboardSummary get summary => _summary;
+    if (_athleteDashboard?.stravaConnected == true) {
+      return StravaConnectionStatus.connected;
+    }
 
-  bool get isLoadingSummary => _isLoadingSummary;
-
-  String? get dashboardError => _dashboardError;
+    return StravaConnectionStatus.disconnected;
+  }
 
   StravaConnectionStatus get connectionStatus => _connectionController.status;
 
@@ -48,24 +55,31 @@ class DashboardController extends ChangeNotifier {
 
   String? get syncErrorMessage => _syncController.errorMessage;
 
+  AthleteDashboard? get athleteDashboard => _athleteDashboard;
+
+  bool get isLoadingAthleteDashboard => _isLoadingAthleteDashboard;
+
+  String? get athleteDashboardError => _athleteDashboardError;
+
   Future<void> initialize() async {
-    await loadSummary();
+  await loadAthleteDashboard();
   }
 
-  Future<void> loadSummary() async {
-    _isLoadingSummary = true;
-    _dashboardError = null;
-    notifyListeners();
-
-    try {
-      _summary = await _dashboardService.loadSummary(userId: userId);
-    } catch (_) {
-      _dashboardError = 'No fue posible actualizar el resumen del dashboard.';
-    } finally {
-      _isLoadingSummary = false;
+    Future<void> loadAthleteDashboard() async {
+      _isLoadingAthleteDashboard = true;
+      _athleteDashboardError = null;
       notifyListeners();
+
+      try {
+        _athleteDashboard = await _athleteApiService.getDashboard();
+      } catch (_) {
+        _athleteDashboardError =
+            'No fue posible obtener los datos actuales del atleta.';
+      } finally {
+        _isLoadingAthleteDashboard = false;
+        notifyListeners();
+      }
     }
-  }
 
   Future<String?> connectWithStrava() async {
     if (_connectionController.isAuthorizing) {
@@ -108,7 +122,7 @@ class DashboardController extends ChangeNotifier {
           'No fue posible sincronizar las actividades.';
     }
 
-    await loadSummary();
+    await loadAthleteDashboard();
 
     if (!result.hasResults) {
       return 'Sincronización completada sin actividades nuevas.';
@@ -145,6 +159,7 @@ class DashboardController extends ChangeNotifier {
   void dispose() {
     _connectionController.removeListener(_handleExternalChange);
     _syncController.removeListener(_handleExternalChange);
+    _athleteApiService.dispose();
     super.dispose();
   }
 }
