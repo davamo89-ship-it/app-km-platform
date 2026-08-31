@@ -1,145 +1,215 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/app_dependencies.dart';
+import '../../models/athletes/athlete_dashboard.dart';
+import '../../services/athletes/athlete_api_service.dart';
+import '../../services/strava/strava_backend_api_service.dart';
 import '../../services/strava/strava_connection_controller.dart';
 import '../../services/strava/strava_oauth_launcher.dart';
 import '../../services/strava/strava_sync_controller.dart';
-import '../../models/athletes/athlete_dashboard.dart';
-import '../../services/athletes/athlete_api_service.dart';
-
 
 class DashboardController extends ChangeNotifier {
-  DashboardController({
-    AppDependencies? dependencies,
-    this.userId = 'local-user',
-  }) {
-    final resolvedDependencies = dependencies ?? AppDependencies.instance;
+  DashboardController();
 
-    _connectionController = resolvedDependencies.stravaConnectionController;
-    _syncController = resolvedDependencies.stravaSyncController;
-    _oauthLauncher = resolvedDependencies.stravaOAuthLauncher;
-    _athleteApiService = AthleteApiService();
+  final AthleteApiService _athleteApiService = AthleteApiService();
+  final StravaBackendApiService _stravaBackendApiService =
+      StravaBackendApiService();
+  final StravaOAuthLauncher _oauthLauncher = const StravaOAuthLauncher();
 
-    _connectionController.addListener(_handleExternalChange);
-    _syncController.addListener(_handleExternalChange);
-  }
-
-  final String userId;
-
-  late final StravaConnectionController _connectionController;
-  late final StravaSyncController _syncController;
-  late final StravaOAuthLauncher _oauthLauncher;
-  late final AthleteApiService _athleteApiService;
-  
   AthleteDashboard? _athleteDashboard;
   bool _isLoadingAthleteDashboard = true;
   String? _athleteDashboardError;
 
-  StravaConnectionStatus get effectiveConnectionStatus {
-    if (_isLoadingAthleteDashboard) {
-      return StravaConnectionStatus.checking;
-    }
+  StravaConnectionStatus _connectionStatus =
+      StravaConnectionStatus.checking;
+  StravaSyncStatus _syncStatus = StravaSyncStatus.idle;
 
-    if (_athleteDashboard?.stravaConnected == true) {
-      return StravaConnectionStatus.connected;
-    }
+  String? _connectionErrorMessage;
+  String? _syncErrorMessage;
 
-    return StravaConnectionStatus.disconnected;
-  }
+  StravaConnectionStatus get effectiveConnectionStatus =>
+      _connectionStatus;
 
-  StravaConnectionStatus get connectionStatus => _connectionController.status;
+  StravaConnectionStatus get connectionStatus =>
+      _connectionStatus;
 
-  StravaSyncStatus get syncStatus => _syncController.status;
+  StravaSyncStatus get syncStatus => _syncStatus;
 
-  String? get connectionErrorMessage => _connectionController.errorMessage;
+  String? get connectionErrorMessage =>
+      _connectionErrorMessage;
 
-  String? get syncErrorMessage => _syncController.errorMessage;
+  String? get syncErrorMessage => _syncErrorMessage;
 
   AthleteDashboard? get athleteDashboard => _athleteDashboard;
 
-  bool get isLoadingAthleteDashboard => _isLoadingAthleteDashboard;
+  bool get isLoadingAthleteDashboard =>
+      _isLoadingAthleteDashboard;
 
-  String? get athleteDashboardError => _athleteDashboardError;
+  String? get athleteDashboardError =>
+      _athleteDashboardError;
 
   Future<void> initialize() async {
-  await loadAthleteDashboard();
+    await loadAthleteDashboard();
   }
 
-    Future<void> loadAthleteDashboard() async {
-      _isLoadingAthleteDashboard = true;
-      _athleteDashboardError = null;
-      notifyListeners();
-
-      try {
-        _athleteDashboard = await _athleteApiService.getDashboard();
-      } catch (_) {
-        _athleteDashboardError =
-            'No fue posible obtener los datos actuales del atleta.';
-      } finally {
-        _isLoadingAthleteDashboard = false;
-        notifyListeners();
-      }
-    }
-
-  Future<String?> connectWithStrava() async {
-    if (_connectionController.isAuthorizing) {
-      return null;
-    }
+  Future<void> loadAthleteDashboard() async {
+    _isLoadingAthleteDashboard = true;
+    _athleteDashboardError = null;
+    _connectionErrorMessage = null;
+    _connectionStatus = StravaConnectionStatus.checking;
+    notifyListeners();
 
     try {
-      final authorizationUri = _connectionController.beginAuthorization();
+      final dashboard =
+          await _athleteApiService.getDashboard();
 
-      await _oauthLauncher.openAuthorizationUri(authorizationUri);
+      _athleteDashboard = dashboard;
+      _connectionStatus = dashboard.stravaConnected
+          ? StravaConnectionStatus.connected
+          : StravaConnectionStatus.disconnected;
+    } catch (_) {
+      _athleteDashboardError =
+          'No fue posible obtener los datos actuales del atleta.';
+      _connectionErrorMessage =
+          'No fue posible verificar la conexión con Strava.';
+      _connectionStatus = StravaConnectionStatus.error;
+    } finally {
+      _isLoadingAthleteDashboard = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> connectWithStrava() async {
+    if (_connectionStatus ==
+        StravaConnectionStatus.authorizing) {
+      return null;
+    }
+
+    _connectionStatus =
+        StravaConnectionStatus.authorizing;
+    _connectionErrorMessage = null;
+    notifyListeners();
+
+    try {
+      final response =
+          await _stravaBackendApiService.getConnectUrl();
+
+      final authorizationUri =
+          Uri.parse(response.authorizationUrl);
+
+      await _oauthLauncher.openAuthorizationUri(
+        authorizationUri,
+      );
 
       return null;
+    } on StravaBackendApiException catch (error) {
+      _connectionStatus = StravaConnectionStatus.error;
+      _connectionErrorMessage = error.message;
+      notifyListeners();
+      return error.message;
     } catch (_) {
-      return _connectionController.errorMessage ??
+      const message =
           'No fue posible abrir la autorización de Strava.';
+
+      _connectionStatus = StravaConnectionStatus.error;
+      _connectionErrorMessage = message;
+      notifyListeners();
+
+      return message;
     }
   }
 
   Future<String> disconnectStrava() async {
-    await _connectionController.disconnect();
-    _syncController.clearResult();
+    try {
+      await _stravaBackendApiService.disconnect();
 
-    if (_connectionController.hasError) {
-      return _connectionController.errorMessage ??
+      _syncStatus = StravaSyncStatus.idle;
+      _syncErrorMessage = null;
+
+      await loadAthleteDashboard();
+
+      return 'Cuenta de Strava desconectada.';
+    } on StravaBackendApiException catch (error) {
+      _connectionErrorMessage = error.message;
+      _connectionStatus = StravaConnectionStatus.error;
+      notifyListeners();
+
+      return error.message;
+    } catch (_) {
+      const message =
           'No fue posible desconectar Strava.';
-    }
 
-    return 'Cuenta de Strava desconectada.';
+      _connectionErrorMessage = message;
+      _connectionStatus = StravaConnectionStatus.error;
+      notifyListeners();
+
+      return message;
+    }
   }
 
   Future<String> syncActivities() async {
-    if (_syncController.isSynchronizing) {
+    if (_syncStatus == StravaSyncStatus.synchronizing) {
       return 'La sincronización ya está en proceso.';
     }
 
-    final result = await _syncController.synchronizeToday(userId: userId);
+    if (_connectionStatus !=
+        StravaConnectionStatus.connected) {
+      return 'Conecta tu cuenta de Strava antes de sincronizar.';
+    }
 
-    if (result == null) {
-      return _syncController.errorMessage ??
+    _syncStatus = StravaSyncStatus.synchronizing;
+    _syncErrorMessage = null;
+    notifyListeners();
+
+    try {
+      final result =
+          await _stravaBackendApiService.syncActivities();
+
+      _syncStatus = StravaSyncStatus.success;
+
+      await loadAthleteDashboard();
+
+      notifyListeners();
+
+      if (result.saved == 0) {
+        return 'Sincronización completada: '
+            '${result.retrieved} recuperadas, '
+            'sin actividades nuevas guardadas. '
+            '${result.skippedDuplicate} duplicadas y '
+            '${result.skippedInvalid} inválidas omitidas.';
+      }
+
+      return 'Sincronización completada: '
+          '${result.retrieved} recuperadas, '
+          '${result.saved} guardadas, '
+          '${result.skippedDuplicate} duplicadas y '
+          '${result.skippedInvalid} inválidas omitidas.';
+    } on StravaBackendApiException catch (error) {
+      _syncStatus = StravaSyncStatus.error;
+      _syncErrorMessage = error.message;
+      notifyListeners();
+
+      return error.message;
+    } catch (_) {
+      const message =
           'No fue posible sincronizar las actividades.';
+
+      _syncStatus = StravaSyncStatus.error;
+      _syncErrorMessage = message;
+      notifyListeners();
+
+      return message;
     }
-
-    await loadAthleteDashboard();
-
-    if (!result.hasResults) {
-      return 'Sincronización completada sin actividades nuevas.';
-    }
-
-    return 'Sincronización completada: '
-        '${result.approvedCount} aprobadas, '
-        '${result.rejectedCount} rechazadas y '
-        '${result.totalPointsAwarded} puntos generados.';
   }
 
   void retryConnectionCheck() {
-    _connectionController.initialize();
+    loadAthleteDashboard();
   }
 
   Future<String> retrySynchronization() async {
-    _syncController.clearResult();
+    _syncStatus = StravaSyncStatus.idle;
+    _syncErrorMessage = null;
+    notifyListeners();
+
     return syncActivities();
   }
 
@@ -151,15 +221,10 @@ class DashboardController extends ChangeNotifier {
     return value.toStringAsFixed(1);
   }
 
-  void _handleExternalChange() {
-    notifyListeners();
-  }
-
   @override
   void dispose() {
-    _connectionController.removeListener(_handleExternalChange);
-    _syncController.removeListener(_handleExternalChange);
     _athleteApiService.dispose();
+    _stravaBackendApiService.dispose();
     super.dispose();
   }
 }

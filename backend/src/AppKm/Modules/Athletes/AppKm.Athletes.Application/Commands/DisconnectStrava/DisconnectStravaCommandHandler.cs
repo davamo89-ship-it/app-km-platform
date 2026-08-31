@@ -49,9 +49,20 @@ public sealed class DisconnectStravaCommandHandler
             return Result<DisconnectStravaResult>.Failure(
                 DisconnectStravaErrors.ConnectionNotFound);
         }
-        await _tokenRevocationService.RevokeAsync(
-            connection.RefreshTokenEncrypted,
-            cancellationToken);
+
+        try
+        {
+            await _tokenRevocationService.RevokeAsync(
+                connection.RefreshTokenEncrypted,
+                cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            // La desconexión local no debe depender de que Strava
+            // esté disponible en ese instante. Si la revocación remota
+            // falla por red o por un error HTTP de Strava, App KM
+            // revoca igualmente la conexión local.
+        }
 
         DateTimeOffset disconnectedAtUtc =
             DateTimeOffset.UtcNow;

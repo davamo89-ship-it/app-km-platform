@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/athletes/current_athlete.dart';
+import '../../models/athletes/athlete_settings.dart';
 import '../../services/athletes/athlete_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/auth_api_service.dart';
+import '../../services/strava/strava_backend_api_service.dart';
+import '../../services/strava/strava_oauth_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -13,20 +16,24 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  bool _isStravaConnected = false;
+class _ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   bool _notificationsEnabled = true;
   bool _automaticSyncEnabled = true;
 
   late final AthleteApiService _athleteApiService;
   late final AuthTokenStore _authTokenStore;
   late final AuthApiService _authApiService;
+  late final StravaBackendApiService _stravaBackendApiService;
+  late final StravaOAuthLauncher _stravaOAuthLauncher;
 
     CurrentAthlete? _athlete;
+    AthleteSettings? _settings;
     String? _email;
     int _pointsBalance = 0;
     bool _isLoadingProfile = true;
     String? _profileError;
+    bool _isStravaActionInProgress = false;
 
     @override
     void initState() {
@@ -35,21 +42,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _athleteApiService = AthleteApiService();
       _authTokenStore = AuthTokenStore();
       _authApiService = AuthApiService();
+      _stravaBackendApiService = StravaBackendApiService();
+      _stravaOAuthLauncher = const StravaOAuthLauncher();
+      WidgetsBinding.instance.addObserver(this);
 
       _loadProfile();
     }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _athleteApiService.dispose();
     _authApiService.dispose();
+    _stravaBackendApiService.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshStravaState();
+    }
   }
 
     Future<void> _loadProfile() async {
       try {
         final athlete = await _athleteApiService.getCurrentAthlete();
         final dashboard = await _athleteApiService.getDashboard();
+        final settings = await _athleteApiService.getSettings();
         final email = await _authTokenStore.getEmail();
 
         if (!mounted) {
@@ -58,6 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         setState(() {
           _athlete = athlete;
+          _settings = settings;
           _email = email;
           _pointsBalance = dashboard.pointsBalance;
           _profileError = null;
@@ -75,20 +96,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
 
-  void _toggleStravaConnection() {
+  Future<void> _refreshStravaState() async {
+    try {
+      final settings = await _athleteApiService.getSettings();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _settings = settings;
+      });
+    } catch (_) {
+      // El perfil ya maneja su propio estado de error.
+      // Aquí evitamos mostrar errores al volver desde el navegador.
+    }
+  }
+
+  Future<void> _handleStravaConnectionPressed() async {
+    if (_isStravaActionInProgress) {
+      return;
+    }
+
+    final isConnected = _settings?.stravaConnected ?? false;
+
     setState(() {
-      _isStravaConnected = !_isStravaConnected;
+      _isStravaActionInProgress = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isStravaConnected
-              ? 'Cuenta de Strava conectada correctamente.'
-              : 'Cuenta de Strava desconectada.',
+    try {
+      if (isConnected) {
+        await _stravaBackendApiService.disconnect();
+        await _refreshStravaState();
+
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cuenta de Strava desconectada correctamente.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final connectResponse =
+          await _stravaBackendApiService.getConnectUrl();
+
+      final authorizationUri =
+          Uri.parse(connectResponse.authorizationUrl);
+
+      await _stravaOAuthLauncher.openAuthorizationUri(
+        authorizationUri,
+      );
+    } on StravaBackendApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No fue posible completar la operación con Strava.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStravaActionInProgress = false;
+        });
+      }
+    }
   }
 
   Future<void> _showEditProfileDialog() async {
@@ -423,14 +516,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Strava',
             children: [
               _StravaOption(
-                isConnected: _isStravaConnected,
-                onPressed: _toggleStravaConnection,
+                isConnected: _settings?.stravaConnected ?? false,
+                isBusy: _isStravaActionInProgress,
+                onPressed: _handleStravaConnectionPressed,
               ),
               const _OptionDivider(),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _automaticSyncEnabled,
-                onChanged: _isStravaConnected
+                onChanged: (_settings?.stravaConnected ?? false)
                     ? (value) {
                         setState(() {
                           _automaticSyncEnabled = value;
@@ -448,7 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 subtitle: Text(
-                  _isStravaConnected
+                  (_settings?.stravaConnected ?? false)
                       ? 'Importar nuevas actividades automáticamente'
                       : 'Conecta Strava para activar esta opción',
                 ),
@@ -717,10 +811,12 @@ class _ProfileOption extends StatelessWidget {
 class _StravaOption extends StatelessWidget {
   const _StravaOption({
     required this.isConnected,
+    required this.isBusy,
     required this.onPressed,
   });
 
   final bool isConnected;
+  final bool isBusy;
   final VoidCallback onPressed;
 
   @override
@@ -751,7 +847,7 @@ class _StravaOption extends StatelessWidget {
         isConnected ? 'Cuenta conectada' : 'Sin conectar',
       ),
       trailing: FilledButton(
-        onPressed: onPressed,
+        onPressed: isBusy ? null : onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: isConnected
               ? Colors.red
@@ -761,7 +857,11 @@ class _StravaOption extends StatelessWidget {
           ),
         ),
         child: Text(
-          isConnected ? 'Desconectar' : 'Conectar',
+          isBusy
+              ? 'Procesando...'
+              : isConnected
+                  ? 'Desconectar'
+                  : 'Conectar',
         ),
       ),
     );

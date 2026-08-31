@@ -4,6 +4,7 @@ import '../../core/config/api_config.dart';
 import '../../models/athletes/current_athlete.dart';
 import '../../models/athletes/athlete_dashboard.dart';
 import '../api/authenticated_api_client.dart';
+import '../../models/athletes/athlete_settings.dart';
 
 class AthleteApiException implements Exception {
   const AthleteApiException(
@@ -135,6 +136,40 @@ class AthleteApiService {
         'No fue posible actualizar el perfil.',
         statusCode: response.statusCode,
     );
+    }
+
+    Future<AthleteSettings> getSettings() async {
+      final uri = ApiConfig.athletesUri(
+        '/api/v1/athletes/settings',
+      );
+
+      final response = await _client.get(uri);
+
+      if (response.statusCode == 200) {
+        final json =
+            jsonDecode(response.body) as Map<String, dynamic>;
+
+        return AthleteSettings.fromJson(json);
+      }
+
+      if (response.statusCode == 401) {
+        throw AthleteApiException(
+          'La sesión ha expirado.',
+          statusCode: 401,
+        );
+      }
+
+      if (response.statusCode == 404) {
+        throw AthleteApiException(
+          'No se encontró el perfil del atleta.',
+          statusCode: 404,
+        );
+      }
+
+      throw AthleteApiException(
+        'No fue posible cargar la configuración.',
+        statusCode: response.statusCode,
+      );
     }
 
   void dispose() {

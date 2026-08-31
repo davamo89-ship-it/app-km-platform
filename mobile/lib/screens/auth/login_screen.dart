@@ -14,17 +14,18 @@ class LoginScreen extends StatefulWidget {
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
-  late final AuthApiService _authApiService;
-  late final AuthTokenStore _authTokenStore;
-
-  bool _isLoggingIn = false;
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  final AuthApiService _authApiService = AuthApiService();
+  final AuthTokenStore _authTokenStore = AuthTokenStore();
+
   late final StravaConnectionController _stravaConnectionController;
+
+  bool _isLoggingIn = false;
 
   bool _obscurePassword = true;
   bool _openingStrava = false;
@@ -33,8 +34,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _authApiService = AuthApiService();
-    _authTokenStore = AuthTokenStore();
 
     final dependencies = AppDependencies.instance;
 
@@ -62,9 +61,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     _emailController.dispose();
     _passwordController.dispose();
+    _authApiService.dispose();
 
     super.dispose();
-    _authApiService.dispose();
   }
 
   void _handleStravaConnectionChange() {

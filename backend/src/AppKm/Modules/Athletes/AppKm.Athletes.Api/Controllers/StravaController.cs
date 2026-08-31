@@ -15,6 +15,9 @@ namespace AppKm.Athletes.Api.Controllers;
 [Route("api/v1/athletes/strava")]
 public sealed class StravaController : ControllerBase
 {
+    private const string AppCallbackBaseUrl =
+        "appkm://strava-callback";
+
     private readonly IStravaAuthorizationService
         _authorizationService;
 
@@ -23,51 +26,56 @@ public sealed class StravaController : ControllerBase
 
     private readonly IOAuthStateStore
         _stateStore;
+
     private readonly ConnectStravaCommandHandler
         _connectStravaHandler;
+
     private readonly GetStravaConnectionStatusQueryHandler
         _connectionStatusHandler;
-        private readonly DisconnectStravaCommandHandler
-    _disconnectHandler;
+
+    private readonly DisconnectStravaCommandHandler
+        _disconnectHandler;
+
     private readonly GetStravaActivitiesQueryHandler
-    _activitiesHandler;
+        _activitiesHandler;
+
     private readonly SyncStravaActivitiesCommandHandler
-    _syncActivitiesHandler;
+        _syncActivitiesHandler;
 
     public StravaController(
-    IStravaAuthorizationService authorizationService,
-    IOAuthStateGenerator stateGenerator,
-    IOAuthStateStore stateStore,
-    ConnectStravaCommandHandler connectStravaHandler,
-    GetStravaConnectionStatusQueryHandler connectionStatusHandler,
-    DisconnectStravaCommandHandler disconnectHandler,
-    GetStravaActivitiesQueryHandler activitiesHandler,
-    SyncStravaActivitiesCommandHandler syncActivitiesHandler)
-{
-    _authorizationService =
-        authorizationService;
+        IStravaAuthorizationService authorizationService,
+        IOAuthStateGenerator stateGenerator,
+        IOAuthStateStore stateStore,
+        ConnectStravaCommandHandler connectStravaHandler,
+        GetStravaConnectionStatusQueryHandler connectionStatusHandler,
+        DisconnectStravaCommandHandler disconnectHandler,
+        GetStravaActivitiesQueryHandler activitiesHandler,
+        SyncStravaActivitiesCommandHandler syncActivitiesHandler)
+    {
+        _authorizationService =
+            authorizationService;
 
-    _stateGenerator =
-        stateGenerator;
+        _stateGenerator =
+            stateGenerator;
 
-    _stateStore =
-        stateStore;
+        _stateStore =
+            stateStore;
 
-    _connectStravaHandler =
-        connectStravaHandler;
+        _connectStravaHandler =
+            connectStravaHandler;
 
-    _connectionStatusHandler = 
-        connectionStatusHandler;
+        _connectionStatusHandler =
+            connectionStatusHandler;
 
-    _disconnectHandler =
-        disconnectHandler;
+        _disconnectHandler =
+            disconnectHandler;
 
-    _activitiesHandler =
-        activitiesHandler;
+        _activitiesHandler =
+            activitiesHandler;
 
-    _syncActivitiesHandler =
-        syncActivitiesHandler;
-}
+        _syncActivitiesHandler =
+            syncActivitiesHandler;
+    }
 
     [HttpGet("callback")]
     [AllowAnonymous]
@@ -80,22 +88,15 @@ public sealed class StravaController : ControllerBase
     {
         if (!string.IsNullOrWhiteSpace(error))
         {
-            return BadRequest(new
-            {
-                error,
-                message =
-                    "Strava authorization was denied."
-            });
+            return RedirectToApp(
+                "denied");
         }
 
         if (string.IsNullOrWhiteSpace(code) ||
             string.IsNullOrWhiteSpace(state))
         {
-            return BadRequest(new
-            {
-                message =
-                    "Invalid Strava OAuth callback."
-            });
+            return RedirectToApp(
+                "invalid_callback");
         }
 
         bool validState =
@@ -105,12 +106,8 @@ public sealed class StravaController : ControllerBase
 
         if (!validState)
         {
-            return BadRequest(new
-            {
-                code = "Strava.InvalidOAuthState",
-                message =
-                    "The OAuth state is invalid or has already been used."
-            });
+            return RedirectToApp(
+                "invalid_state");
         }
 
         var command =
@@ -123,18 +120,15 @@ public sealed class StravaController : ControllerBase
                 command,
                 cancellationToken);
 
-        return Ok(new
+        if (result.IsFailure)
         {
-            message =
-                "Strava account connected successfully.",
-            stravaAthleteId =
-                result.Value.StravaAthleteId,
-            connectedAtUtc =
-                result.Value.ConnectedAtUtc,
-            scope
-        });
-    }
+            return RedirectToApp(
+                "connection_failed");
+        }
 
+        return RedirectToApp(
+            "connected");
+    }
 
     [Authorize(Roles = "Athlete")]
     [HttpGet("connect")]
@@ -210,101 +204,100 @@ public sealed class StravaController : ControllerBase
                 result.AccessTokenExpiresAtUtc));
     }
 
-        [Authorize(Roles = "Athlete")]
-        [HttpGet("activities")]
-        public async Task<IActionResult> GetActivities(
-            [FromQuery] DateTimeOffset? after,
-            [FromQuery] DateTimeOffset? before,
-            [FromQuery] int page = 1,
-            [FromQuery] int perPage = 30,
-            CancellationToken cancellationToken = default)
+    [Authorize(Roles = "Athlete")]
+    [HttpGet("activities")]
+    public async Task<IActionResult> GetActivities(
+        [FromQuery] DateTimeOffset? after,
+        [FromQuery] DateTimeOffset? before,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 30,
+        CancellationToken cancellationToken = default)
+    {
+        string? userIdValue =
+            User.FindFirst(
+                JwtRegisteredClaimNames.Sub)?.Value;
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out Guid userId))
         {
-            string? userIdValue =
-                User.FindFirst(
-                    JwtRegisteredClaimNames.Sub)?.Value;
-
-            if (!Guid.TryParse(
-                    userIdValue,
-                    out Guid userId))
-            {
-                return Unauthorized();
-            }
-
-            var query =
-                new GetStravaActivitiesQuery(
-                    userId,
-                    after,
-                    before,
-                    page,
-                    perPage);
-
-            var result =
-                await _activitiesHandler.HandleAsync(
-                    query,
-                    cancellationToken);
-
-            if (result.IsFailure)
-            {
-                return BadRequest(new
-                {
-                    code = result.Error.Code,
-                    message = result.Error.Message
-                });
-            }
-
-            return Ok(result.Value);
+            return Unauthorized();
         }
 
-        [Authorize(Roles = "Athlete")]
-        [HttpPost("sync")]
-        public async Task<IActionResult> SyncActivities(
-            CancellationToken cancellationToken)
+        var query =
+            new GetStravaActivitiesQuery(
+                userId,
+                after,
+                before,
+                page,
+                perPage);
+
+        var result =
+            await _activitiesHandler.HandleAsync(
+                query,
+                cancellationToken);
+
+        if (result.IsFailure)
         {
-            string? userIdValue =
-                User.FindFirst(
-                    JwtRegisteredClaimNames.Sub)?.Value;
-
-            if (!Guid.TryParse(
-                    userIdValue,
-                    out Guid userId))
+            return BadRequest(new
             {
-                return Unauthorized();
-            }
-
-            var command =
-                new SyncStravaActivitiesCommand(
-                    userId);
-
-            var result =
-                await _syncActivitiesHandler.HandleAsync(
-                    command,
-                    cancellationToken);
-
-            if (result.IsFailure)
-            {
-                return BadRequest(new
-                {
-                    code = result.Error.Code,
-                    message = result.Error.Message
-                });
-            }
-
-            return Ok(new
-            {
-                retrieved =
-                    result.Value.Retrieved,
-
-                saved =
-                    result.Value.Saved,
-
-                skippedInvalid =
-                    result.Value.SkippedInvalid,
-
-                skippedDuplicate =
-                    result.Value.SkippedDuplicate
+                code = result.Error.Code,
+                message = result.Error.Message
             });
         }
 
+        return Ok(result.Value);
+    }
+
+    [Authorize(Roles = "Athlete")]
+    [HttpPost("sync")]
+    public async Task<IActionResult> SyncActivities(
+        CancellationToken cancellationToken)
+    {
+        string? userIdValue =
+            User.FindFirst(
+                JwtRegisteredClaimNames.Sub)?.Value;
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out Guid userId))
+        {
+            return Unauthorized();
+        }
+
+        var command =
+            new SyncStravaActivitiesCommand(
+                userId);
+
+        var result =
+            await _syncActivitiesHandler.HandleAsync(
+                command,
+                cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(new
+            {
+                code = result.Error.Code,
+                message = result.Error.Message
+            });
+        }
+
+        return Ok(new
+        {
+            retrieved =
+                result.Value.Retrieved,
+
+            saved =
+                result.Value.Saved,
+
+            skippedInvalid =
+                result.Value.SkippedInvalid,
+
+            skippedDuplicate =
+                result.Value.SkippedDuplicate
+        });
+    }
 
     [Authorize(Roles = "Athlete")]
     [HttpDelete("disconnect")]
@@ -341,13 +334,21 @@ public sealed class StravaController : ControllerBase
         }
 
         return Ok(new
-            {
-                disconnected = true,
-                athleteId = result.Value.AthleteId,
-                status = result.Value.Status,
-                disconnectedAtUtc =
-                    result.Value.DisconnectedAtUtc
-            });
-}
-    
+        {
+            disconnected = true,
+            athleteId = result.Value.AthleteId,
+            status = result.Value.Status,
+            disconnectedAtUtc =
+                result.Value.DisconnectedAtUtc
+        });
+    }
+
+    private RedirectResult RedirectToApp(
+        string status)
+    {
+        string url =
+            $"{AppCallbackBaseUrl}?status={Uri.EscapeDataString(status)}";
+
+        return Redirect(url);
+    }
 }
