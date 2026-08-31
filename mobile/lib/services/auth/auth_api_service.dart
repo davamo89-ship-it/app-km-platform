@@ -105,6 +105,33 @@ class AuthApiService {
         statusCode: response.statusCode,
       );
     }
+  
+     Future<void> logout({
+      required String refreshToken,
+    }) async {
+      final uri = ApiConfig.identityUri('/api/v1/identity/logout');
+
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'refreshToken': refreshToken,
+        }),
+      );
+
+      if (response.statusCode == 200 ||
+          response.statusCode == 204) {
+        return;
+      }
+
+      throw AuthApiException(
+        'No fue posible cerrar la sesión.',
+        statusCode: response.statusCode,
+      );
+    }
 
   void dispose() {
     _client.close();

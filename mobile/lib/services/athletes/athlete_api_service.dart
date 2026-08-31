@@ -90,6 +90,53 @@ class AthleteApiService {
         );
         }
 
+    Future<void> updateCurrentAthlete({
+    required CurrentAthlete athlete,
+    required String displayName,
+    String? countryCode,
+    DateTime? birthDate,
+    String? preferredSport,
+    }) async {
+    final uri = ApiConfig.athletesUri('/api/v1/athletes/me');
+
+    final response = await _client.patch(
+        uri,
+        body: {
+        'displayName': displayName,
+        'profileImageUrl': athlete.profileImageUrl,
+        'countryCode': countryCode,
+        'birthDate': birthDate
+            ?.toIso8601String()
+            .split('T')
+            .first,
+        'preferredSport': preferredSport,
+        },
+    );
+
+    if (response.statusCode == 200) {
+        return;
+    }
+
+    if (response.statusCode == 400) {
+        throw AthleteApiException(
+        'Los datos del perfil no son válidos.',
+        statusCode: 400,
+        );
+    }
+
+    if (response.statusCode == 401) {
+        throw AthleteApiException(
+        'La sesión ha expirado.',
+        statusCode: 401,
+        );
+    }
+
+    throw AthleteApiException(
+        'No fue posible actualizar el perfil.',
+        statusCode: response.statusCode,
+    );
+    }
+
   void dispose() {
     _client.dispose();
   }

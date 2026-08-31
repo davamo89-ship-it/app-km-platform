@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/routes/app_routes.dart';
+import '../../models/athletes/current_athlete.dart';
+import '../../services/athletes/athlete_api_service.dart';
+import '../../services/auth/auth_token_store.dart';
+import '../../services/auth/auth_api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,6 +17,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isStravaConnected = false;
   bool _notificationsEnabled = true;
   bool _automaticSyncEnabled = true;
+
+  late final AthleteApiService _athleteApiService;
+  late final AuthTokenStore _authTokenStore;
+  late final AuthApiService _authApiService;
+
+    CurrentAthlete? _athlete;
+    String? _email;
+    int _pointsBalance = 0;
+    bool _isLoadingProfile = true;
+    String? _profileError;
+
+    @override
+    void initState() {
+      super.initState();
+
+      _athleteApiService = AthleteApiService();
+      _authTokenStore = AuthTokenStore();
+      _authApiService = AuthApiService();
+
+      _loadProfile();
+    }
+
+  @override
+  void dispose() {
+    _athleteApiService.dispose();
+    _authApiService.dispose();
+    super.dispose();
+  }
+
+    Future<void> _loadProfile() async {
+      try {
+        final athlete = await _athleteApiService.getCurrentAthlete();
+        final dashboard = await _athleteApiService.getDashboard();
+        final email = await _authTokenStore.getEmail();
+
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _athlete = athlete;
+          _email = email;
+          _pointsBalance = dashboard.pointsBalance;
+          _profileError = null;
+          _isLoadingProfile = false;
+        });
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _profileError = 'No fue posible cargar el perfil.';
+          _isLoadingProfile = false;
+        });
+      }
+    }
 
   void _toggleStravaConnection() {
     setState(() {
@@ -31,63 +91,225 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showEditProfileDialog() {
-    final TextEditingController nameController =
-        TextEditingController(text: 'David');
-    final TextEditingController emailController =
-        TextEditingController(text: 'david@email.com');
+  Future<void> _showEditProfileDialog() async {
+    final TextEditingController nameController = TextEditingController(
+      text: _athlete?.displayName ?? '',
+    );
+    final TextEditingController emailController = TextEditingController(
+      text: _email ?? '',
+    );
+    final TextEditingController countryController = TextEditingController(
+      text: _athlete?.countryCode ?? '',
+    );
 
-    showDialog<void>(
+    DateTime? selectedBirthDate = _athlete?.birthDate;
+    String? selectedSport = _athlete?.preferredSport;
+
+    await showDialog<void>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Editar perfil'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre',
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Correo electrónico',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Perfil actualizado correctamente.',
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Editar perfil'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
                     ),
-                  ),
-                );
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: emailController,
+                      enabled: false,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Correo electrónico',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: countryController,
+                      textCapitalization: TextCapitalization.characters,
+                      maxLength: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'País',
+                        prefixIcon: Icon(Icons.public_outlined),
+                        hintText: 'Ejemplo: CR',
+                        counterText: '',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate:
+                              selectedBirthDate ?? DateTime(2000, 1, 1),
+                          firstDate: DateTime(1940, 1, 1),
+                          lastDate: DateTime.now(),
+                        );
+
+                        if (pickedDate != null) {
+                          setDialogState(() {
+                            selectedBirthDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Fecha de nacimiento',
+                          prefixIcon: Icon(
+                            Icons.calendar_today_outlined,
+                          ),
+                        ),
+                        child: Text(
+                          selectedBirthDate == null
+                              ? 'Seleccionar fecha'
+                              : '${selectedBirthDate!.day.toString().padLeft(2, '0')}/'
+                                  '${selectedBirthDate!.month.toString().padLeft(2, '0')}/'
+                                  '${selectedBirthDate!.year}',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedSport,
+                      decoration: const InputDecoration(
+                        labelText: 'Deporte preferido',
+                        prefixIcon: Icon(
+                          Icons.directions_run_outlined,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Cycling',
+                          child: Text('Ciclismo'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Running',
+                          child: Text('Correr'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Walking',
+                          child: Text('Caminar'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Swimming',
+                          child: Text('Natación'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Gym',
+                          child: Text('Gimnasio'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedSport = value;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final athlete = _athlete;
+
+                    if (athlete == null) {
+                      return;
+                    }
+
+                    final displayName = nameController.text.trim();
+                    final countryCode =
+                        countryController.text.trim().toUpperCase();
+
+                    if (displayName.isEmpty) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'El nombre no puede estar vacío.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (countryCode.isNotEmpty &&
+                        countryCode.length != 2) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'El país debe indicarse con un código de 2 letras, por ejemplo CR.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(dialogContext);
+
+                    try {
+                      await _athleteApiService.updateCurrentAthlete(
+                        athlete: athlete,
+                        displayName: displayName,
+                        countryCode:
+                            countryCode.isEmpty ? null : countryCode,
+                        birthDate: selectedBirthDate,
+                        preferredSport: selectedSport,
+                      );
+
+                      await _loadProfile();
+
+                      if (!mounted) {
+                        return;
+                      }
+
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Perfil actualizado correctamente.',
+                          ),
+                        ),
+                      );
+                    } on AthleteApiException catch (error) {
+                      if (!mounted) {
+                        return;
+                      }
+
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text(error.message),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
+
+    nameController.dispose();
+    emailController.dispose();
+    countryController.dispose();
   }
 
   void _showLogoutDialog() {
@@ -107,18 +329,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
 
-                Navigator.pushNamedAndRemoveUntil(
-                  this.context,
-                  AppRoutes.login,
+                try {
+                  final refreshToken =
+                      await _authTokenStore.getRefreshToken();
+
+                  if (refreshToken != null &&
+                      refreshToken.isNotEmpty) {
+                    await _authApiService.logout(
+                      refreshToken: refreshToken,
+                    );
+                  }
+                } catch (_) {
+                  // Aunque falle el logout remoto,
+                  // eliminamos la sesión local.
+                }
+
+                await _authTokenStore.clearSession();
+
+                if (!mounted) {
+                  return;
+                }
+
+                Navigator.of(this.context).pushNamedAndRemoveUntil(
+                  '/login',
                   (route) => false,
                 );
               },
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
               child: const Text('Cerrar sesión'),
             ),
           ],
@@ -145,7 +384,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           30,
         ),
         children: [
-          const _ProfileHeader(),
+          _ProfileHeader(
+            displayName: _athlete?.displayName ?? 'Atleta',
+            email: _email ?? '',
+            points: _pointsBalance,
+            isLoading: _isLoadingProfile,
+          ),
+          if (_profileError != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _profileError!,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           const SizedBox(height: 24),
           _ProfileSection(
             title: 'Cuenta',
@@ -153,7 +407,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ProfileOption(
                 icon: Icons.edit_outlined,
                 title: 'Editar perfil',
-                subtitle: 'Nombre y correo electrónico',
+                subtitle: 'Nombre, país, nacimiento y deporte',
                 onTap: _showEditProfileDialog,
               ),
               const _OptionDivider(),
@@ -284,8 +538,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+    class _ProfileHeader extends StatelessWidget {
+      const _ProfileHeader({
+        required this.displayName,
+        required this.email,
+        required this.points,
+        required this.isLoading,
+      });
+
+      final String displayName;
+      final String email;
+      final int points;
+      final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +566,7 @@ class _ProfileHeader extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(26),
       ),
-      child: const Row(
+      child: Row(
         children: [
           CircleAvatar(
             radius: 34,
@@ -319,7 +583,7 @@ class _ProfileHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'David',
+                  isLoading ? 'Cargando...' : displayName,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 23,
@@ -328,7 +592,7 @@ class _ProfileHeader extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'david@email.com',
+                  isLoading ? '' : email,
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
@@ -344,7 +608,7 @@ class _ProfileHeader extends StatelessWidget {
                     ),
                     SizedBox(width: 5),
                     Text(
-                      '2,350 KM Points',
+                      isLoading ? '' : '$points KM Points',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,

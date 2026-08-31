@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/athletes/current_athlete.dart';
+import '../../services/athletes/athlete_api_service.dart';
 import '../history/history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../workouts/activity_screen.dart';
@@ -11,8 +13,6 @@ import 'widgets/recent_activity_card.dart';
 import 'widgets/section_title.dart';
 import 'widgets/statistics_grid.dart';
 import 'widgets/strava_connection_card.dart';
-import '../../models/athletes/current_athlete.dart';
-import '../../services/athletes/athlete_api_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,23 +24,40 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [
-    HomeDashboard(),
-    ActivityScreen(),
-    HistoryScreen(),
-    ProfileScreen(),
-  ];
+  final GlobalKey<_HomeDashboardState> _homeDashboardKey =
+      GlobalKey<_HomeDashboardState>();
+
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pages = [
+      HomeDashboard(key: _homeDashboardKey),
+      const ActivityScreen(),
+      const HistoryScreen(),
+      const ProfileScreen(),
+    ];
+  }
 
   void _changePage(int index) {
     setState(() {
       _currentIndex = index;
     });
+
+    if (index == 0) {
+      _homeDashboardKey.currentState?.reloadAthlete();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _changePage,
@@ -80,12 +97,11 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard> {
   late final DashboardController _controller;
-
   late final AthleteApiService _athleteApiService;
 
-    CurrentAthlete? _currentAthlete;
-    bool _isLoadingAthlete = true;
-    String? _athleteError;
+  CurrentAthlete? _currentAthlete;
+  bool _isLoadingAthlete = true;
+  String? _athleteError;
 
   @override
   void initState() {
@@ -94,15 +110,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _controller = DashboardController();
     _controller.addListener(_handleControllerChange);
     _controller.initialize();
+
     _athleteApiService = AthleteApiService();
     _loadCurrentAthlete();
-    
   }
 
   Future<void> _loadCurrentAthlete() async {
     try {
-      final athlete =
-          await _athleteApiService.getCurrentAthlete();
+      final athlete = await _athleteApiService.getCurrentAthlete();
 
       if (!mounted) {
         return;
@@ -128,20 +143,24 @@ class _HomeDashboardState extends State<HomeDashboard> {
       }
 
       setState(() {
-        _athleteError =
-            'No fue posible cargar el perfil.';
+        _athleteError = 'No fue posible cargar el perfil.';
         _isLoadingAthlete = false;
       });
     }
   }
 
-@override
-void dispose() {
-  _controller.removeListener(_handleControllerChange);
-  _controller.dispose();
-  _athleteApiService.dispose();
-  super.dispose();
-}
+  Future<void> reloadAthlete() async {
+    await _loadCurrentAthlete();
+    await _controller.loadAthleteDashboard();
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_handleControllerChange);
+    _controller.dispose();
+    _athleteApiService.dispose();
+    super.dispose();
+  }
 
   void _handleControllerChange() {
     if (mounted) {
@@ -156,7 +175,11 @@ void dispose() {
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   Future<void> _connectWithStrava() async {
@@ -186,8 +209,7 @@ void dispose() {
   }
 
   @override
-  Widget build(BuildContext context) {    
-
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -195,8 +217,8 @@ void dispose() {
           slivers: [
             SliverToBoxAdapter(
               child: DashboardHeader(
-                      displayName: _currentAthlete?.displayName ?? 'Atleta',
-                      onNotificationsPressed: () {
+                displayName: _currentAthlete?.displayName ?? 'Atleta',
+                onNotificationsPressed: () {
                   _showMessage('No tienes notificaciones nuevas.');
                 },
               ),
@@ -210,17 +232,6 @@ void dispose() {
                       padding: EdgeInsets.only(bottom: 16),
                       child: LinearProgressIndicator(),
                     )
-                  else if (_currentAthlete != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        'Hola, ${_currentAthlete!.displayName}',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    )
                   else if (_athleteError != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -233,68 +244,78 @@ void dispose() {
                       ),
                     ),
                   PointsCard(
-                    points: _controller.athleteDashboard?.pointsBalance ?? 0,
-                    isLoading: _controller.isLoadingAthleteDashboard,
+                    points:
+                        _controller.athleteDashboard?.pointsBalance ?? 0,
+                    isLoading:
+                        _controller.isLoadingAthleteDashboard,
                   ),
-                    if ((_controller.athleteDashboard?.pointsExpiringSoon ?? 0) > 0) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.25),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.schedule_rounded,
-                              color: Colors.orange,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                '${_controller.athleteDashboard!.pointsExpiringSoon} '
-                                'puntos vencen en los próximos 30 días.',
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
+                  if ((_controller
+                              .athleteDashboard
+                              ?.pointsExpiringSoon ??
+                          0) >
+                      0) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.orange.withValues(alpha: 0.25),
                         ),
                       ),
-                    ],
-
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.schedule_rounded,
+                            color: Colors.orange,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${_controller.athleteDashboard!.pointsExpiringSoon} '
+                              'puntos vencen en los próximos 30 días.',
+                              style: const TextStyle(
+                                color: AppColors.textDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const SectionTitle(
                     title: 'Tu resumen',
                     actionText: 'Este mes',
                   ),
                   const SizedBox(height: 12),
-                 if (_controller.athleteDashboard != null)
+                  if (_controller.athleteDashboard != null)
                     StatisticsGrid(
                       dashboard: _controller.athleteDashboard!,
-                      isLoading: _controller.isLoadingAthleteDashboard,
-                      formatKilometers: _controller.formatKilometers,
+                      isLoading:
+                          _controller.isLoadingAthleteDashboard,
+                      formatKilometers:
+                          _controller.formatKilometers,
                     ),
                   const SizedBox(height: 24),
                   StravaConnectionCard(
                     status: _controller.effectiveConnectionStatus,
                     syncStatus: _controller.syncStatus,
-                    errorMessage: _controller.connectionErrorMessage,
-                    syncErrorMessage: _controller.syncErrorMessage,
+                    errorMessage:
+                        _controller.connectionErrorMessage,
+                    syncErrorMessage:
+                        _controller.syncErrorMessage,
                     onConnect: _connectWithStrava,
                     onSync: _syncActivities,
                     onDisconnect: _disconnectStrava,
-                    onRetryConnection: _controller.retryConnectionCheck,
+                    onRetryConnection:
+                        _controller.retryConnectionCheck,
                     onRetrySync: _retrySynchronization,
                   ),
-                if (_controller.athleteDashboardError != null) ...[
+                  if (_controller.athleteDashboardError != null) ...[
                     const SizedBox(height: 12),
                     Text(
                       _controller.athleteDashboardError!,
@@ -304,7 +325,6 @@ void dispose() {
                       ),
                     ),
                   ],
-
                   const SizedBox(height: 24),
                   const SectionTitle(
                     title: 'Actividad reciente',
@@ -312,8 +332,10 @@ void dispose() {
                   ),
                   const SizedBox(height: 12),
                   RecentActivityCard(
-                    activity: _controller.athleteDashboard?.lastActivity,
-                    isLoading: _controller.isLoadingAthleteDashboard,
+                    activity:
+                        _controller.athleteDashboard?.lastActivity,
+                    isLoading:
+                        _controller.isLoadingAthleteDashboard,
                   ),
                 ]),
               ),
