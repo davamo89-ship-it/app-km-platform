@@ -5,6 +5,7 @@ import '../../models/points/point_history_item.dart';
 import '../../models/points/upcoming_point_expiration.dart';
 import '../../services/api/authenticated_api_client.dart';
 import '../../services/points/points_backend_api_service.dart';
+import '../redemptions/redemptions_screen.dart';
 
 enum HistoryMovementType {
   all,
@@ -227,6 +228,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  Future<void> _openRedemptions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            const RedemptionsScreen(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadHistory();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -237,6 +251,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backgroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
         actions: [
+          TextButton.icon(
+            onPressed: _openRedemptions,
+            icon: const Icon(
+              Icons.qr_code_2_rounded,
+              size: 20,
+            ),
+            label: const Text('Canjes'),
+          ),
           IconButton(
             tooltip: 'Información',
             onPressed: () {
