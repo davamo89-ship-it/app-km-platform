@@ -1,155 +1,218 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/points/point_history_item.dart';
+import '../../models/points/upcoming_point_expiration.dart';
+import '../../services/api/authenticated_api_client.dart';
+import '../../services/points/points_backend_api_service.dart';
 
 enum HistoryMovementType {
   all,
   earned,
-  pending,
+  redeemed,
+  expired,
   adjustment,
-}
-
-class HistoryMovement {
-  const HistoryMovement({
-    required this.title,
-    required this.subtitle,
-    required this.date,
-    required this.points,
-    required this.distance,
-    required this.duration,
-    required this.status,
-    required this.source,
-    required this.icon,
-    required this.type,
-  });
-
-  final String title;
-  final String subtitle;
-  final String date;
-  final int points;
-  final String distance;
-  final String duration;
-  final String status;
-  final String source;
-  final IconData icon;
-  final HistoryMovementType type;
+  other,
 }
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  State<HistoryScreen> createState() =>
+      _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  HistoryMovementType _selectedFilter = HistoryMovementType.all;
+  final PointsBackendApiService _pointsApi =
+      PointsBackendApiService();
 
-  final List<HistoryMovement> _movements = const [
-    HistoryMovement(
-      title: 'Carrera matutina',
-      subtitle: 'Actividad validada',
-      date: '17 de julio de 2026',
-      points: 84,
-      distance: '8.4 km',
-      duration: '48 min',
-      status: 'Validada',
-      source: 'Strava',
-      icon: Icons.directions_run_rounded,
-      type: HistoryMovementType.earned,
-    ),
-    HistoryMovement(
-      title: 'Ruta Lago Arenal',
-      subtitle: 'Actividad validada',
-      date: '15 de julio de 2026',
-      points: 74,
-      distance: '24.7 km',
-      duration: '1 h 32 min',
-      status: 'Validada',
-      source: 'Strava',
-      icon: Icons.directions_bike_rounded,
-      type: HistoryMovementType.earned,
-    ),
-    HistoryMovement(
-      title: 'Caminata vespertina',
-      subtitle: 'Actividad validada',
-      date: '13 de julio de 2026',
-      points: 34,
-      distance: '3.4 km',
-      duration: '41 min',
-      status: 'Validada',
-      source: 'Strava',
-      icon: Icons.directions_walk_rounded,
-      type: HistoryMovementType.earned,
-    ),
-    HistoryMovement(
-      title: 'Carrera de recuperación',
-      subtitle: 'Actividad en revisión',
-      date: '11 de julio de 2026',
-      points: 0,
-      distance: '5.8 km',
-      duration: '36 min',
-      status: 'Pendiente',
-      source: 'Strava',
-      icon: Icons.hourglass_top_rounded,
-      type: HistoryMovementType.pending,
-    ),
-    HistoryMovement(
-      title: 'Ajuste de puntos',
-      subtitle: 'Corrección administrativa',
-      date: '8 de julio de 2026',
-      points: 50,
-      distance: 'No aplica',
-      duration: 'No aplica',
-      status: 'Aplicado',
-      source: 'Administración',
-      icon: Icons.tune_rounded,
-      type: HistoryMovementType.adjustment,
-    ),
-    HistoryMovement(
-      title: 'Carrera urbana',
-      subtitle: 'Actividad validada',
-      date: '28 de junio de 2026',
-      points: 62,
-      distance: '6.2 km',
-      duration: '39 min',
-      status: 'Validada',
-      source: 'Strava',
-      icon: Icons.directions_run_rounded,
-      type: HistoryMovementType.earned,
-    ),
-  ];
+  HistoryMovementType _selectedFilter =
+      HistoryMovementType.all;
 
-  List<HistoryMovement> get _filteredMovements {
+  List<PointHistoryItem> _movements = const [];
+  List<UpcomingPointExpiration> _expirations = const [];
+
+  int _balance = 0;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  @override
+  void dispose() {
+    _pointsApi.dispose();
+    super.dispose();
+  }
+
+  List<PointHistoryItem> get _filteredMovements {
     if (_selectedFilter == HistoryMovementType.all) {
       return _movements;
     }
 
     return _movements
         .where(
-          (movement) => movement.type == _selectedFilter,
+          (movement) =>
+              _movementType(movement) == _selectedFilter,
         )
         .toList();
   }
 
-  Future<void> _refreshHistory() async {
-    await Future<void>.delayed(
-      const Duration(milliseconds: 900),
-    );
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Historial actualizado correctamente.',
-        ),
-      ),
+  double get _totalKilometers {
+    return _movements.fold<double>(
+      0,
+      (total, movement) =>
+          total + (movement.distanceKilometers ?? 0),
     );
   }
 
+  int get _activityCount {
+    return _movements
+        .where(
+          (movement) =>
+              movement.athleteActivityId != null ||
+              movement.stravaActivityId != null,
+        )
+        .length;
+  }
+
+  int get _earnedPoints {
+    return _movements
+        .where(
+          (movement) =>
+              _movementType(movement) ==
+              HistoryMovementType.earned,
+        )
+        .fold<int>(
+          0,
+          (total, movement) =>
+              total + movement.points.abs(),
+        );
+  }
+
+  int get _pointsExpiringSoon {
+    return _expirations
+        .where((expiration) => expiration.shouldNotify)
+        .fold<int>(
+          0,
+          (total, expiration) =>
+              total + expiration.remainingPoints,
+        );
+  }
+
+  Future<void> _loadHistory({
+    bool showSuccessMessage = false,
+  }) async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      final balanceFuture = _pointsApi.getBalance();
+      final historyFuture = _pointsApi.getHistory();
+      final expirationsFuture =
+          _pointsApi.getExpirations();
+
+      final balance = await balanceFuture;
+      final history = await historyFuture;
+      final expirations = await expirationsFuture;
+
+      history.sort(
+        (a, b) =>
+            b.createdAtUtc.compareTo(a.createdAtUtc),
+      );
+
+      expirations.sort(
+        (a, b) =>
+            a.expiresAtUtc.compareTo(b.expiresAtUtc),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _balance = balance;
+        _movements = history;
+        _expirations = expirations;
+        _isLoading = false;
+      });
+
+      if (showSuccessMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Historial actualizado correctamente.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = _friendlyError(error);
+      });
+    }
+  }
+
+  Future<void> _refreshHistory() {
+    return _loadHistory(
+      showSuccessMessage: true,
+    );
+  }
+
+  String _friendlyError(Object error) {
+    if (error is PointsBackendApiException) {
+      return error.message;
+    }
+
+    if (error is AuthenticatedApiException) {
+      return error.message;
+    }
+
+    return 'No fue posible cargar el historial de puntos.';
+  }
+
+  HistoryMovementType _movementType(
+    PointHistoryItem movement,
+  ) {
+    final type = movement.type.toLowerCase();
+
+    if (type.contains('redeem') ||
+        type.contains('canje')) {
+      return HistoryMovementType.redeemed;
+    }
+
+    if (type.contains('expire') ||
+        type.contains('venc')) {
+      return HistoryMovementType.expired;
+    }
+
+    if (type.contains('adjust') ||
+        type.contains('ajuste')) {
+      return HistoryMovementType.adjustment;
+    }
+
+    if (type.contains('earn') ||
+        type.contains('award') ||
+        type.contains('credit') ||
+        type.contains('activity') ||
+        movement.points > 0) {
+      return HistoryMovementType.earned;
+    }
+
+    return HistoryMovementType.other;
+  }
+
   void _showMovementDetails(
-    HistoryMovement movement,
+    PointHistoryItem movement,
   ) {
     showModalBottomSheet<void>(
       context: context,
@@ -158,6 +221,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       builder: (context) {
         return _MovementDetailsSheet(
           movement: movement,
+          movementType: _movementType(movement),
         );
       },
     );
@@ -184,8 +248,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       'Sobre el historial',
                     ),
                     content: const Text(
-                      'Aquí puedes consultar los puntos obtenidos, '
-                      'las actividades pendientes y los ajustes realizados.',
+                      'Aquí puede consultar los movimientos '
+                      'reales de KM Points registrados por '
+                      'App KM.',
                     ),
                     actions: [
                       TextButton(
@@ -207,114 +272,184 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refreshHistory,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            8,
-            20,
-            28,
-          ),
-          children: [
-            const _BalanceCard(),
-            const SizedBox(height: 22),
-            const Text(
-              'Resumen',
-              style: TextStyle(
-                color: AppColors.textDark,
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.route_outlined,
-                    value: '192.5',
-                    label: 'Kilómetros',
-                    unit: 'km',
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.directions_run_outlined,
-                    value: '24',
-                    label: 'Actividades',
-                    unit: '',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.stars_outlined,
-                    value: '1,920',
-                    label: 'Puntos obtenidos',
-                    unit: '',
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.hourglass_top_outlined,
-                    value: '1',
-                    label: 'Pendiente',
-                    unit: '',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Movimientos',
-              style: TextStyle(
-                color: AppColors.textDark,
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _HistoryFilters(
-              selectedFilter: _selectedFilter,
-              onFilterSelected: (filter) {
-                setState(() {
-                  _selectedFilter = filter;
-                });
-              },
-            ),
-            const SizedBox(height: 18),
-            if (_filteredMovements.isEmpty)
-              const _EmptyHistory()
-            else
-              ..._filteredMovements.map(
-                (movement) {
-                  return Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 12,
-                    ),
-                    child: _MovementCard(
-                      movement: movement,
-                      onTap: () {
-                        _showMovementDetails(movement);
-                      },
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
+        child: _buildBody(),
       ),
     );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          80,
+          20,
+          28,
+        ),
+        children: const [
+          Center(
+            child: CircularProgressIndicator(),
+          ),
+        ],
+      );
+    }
+
+    if (_errorMessage != null) {
+      return ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          80,
+          20,
+          28,
+        ),
+        children: [
+          _ErrorCard(
+            message: _errorMessage!,
+            onRetry: _loadHistory,
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        8,
+        20,
+        28,
+      ),
+      children: [
+        _BalanceCard(
+          balance: _balance,
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Resumen',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                icon: Icons.route_outlined,
+                value: _formatDistance(
+                  _totalKilometers,
+                ),
+                label: 'Kilómetros',
+                unit: 'km',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SummaryCard(
+                icon:
+                    Icons.directions_run_outlined,
+                value: '$_activityCount',
+                label: 'Actividades',
+                unit: '',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                icon: Icons.stars_outlined,
+                value: '$_earnedPoints',
+                label: 'Puntos obtenidos',
+                unit: '',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SummaryCard(
+                icon: Icons.schedule_outlined,
+                value: '$_pointsExpiringSoon',
+                label: 'Por vencer',
+                unit: 'pts',
+              ),
+            ),
+          ],
+        ),
+        if (_expirations.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _ExpirationCard(
+            expirations: _expirations,
+          ),
+        ],
+        const SizedBox(height: 24),
+        const Text(
+          'Movimientos',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _HistoryFilters(
+          selectedFilter: _selectedFilter,
+          onFilterSelected: (filter) {
+            setState(() {
+              _selectedFilter = filter;
+            });
+          },
+        ),
+        const SizedBox(height: 18),
+        if (_filteredMovements.isEmpty)
+          const _EmptyHistory()
+        else
+          ..._filteredMovements.map(
+            (movement) {
+              return Padding(
+                padding:
+                    const EdgeInsets.only(
+                  bottom: 12,
+                ),
+                child: _MovementCard(
+                  movement: movement,
+                  movementType:
+                      _movementType(movement),
+                  onTap: () {
+                    _showMovementDetails(
+                      movement,
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  String _formatDistance(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+
+    return value.toStringAsFixed(1);
   }
 }
 
 class _BalanceCard extends StatelessWidget {
-  const _BalanceCard();
+  const _BalanceCard({
+    required this.balance,
+  });
+
+  final int balance;
 
   @override
   Widget build(BuildContext context) {
@@ -338,13 +473,15 @@ class _BalanceCard extends StatelessWidget {
           ),
         ],
       ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(
-                Icons.account_balance_wallet_outlined,
+                Icons
+                    .account_balance_wallet_outlined,
                 color: Colors.white,
               ),
               SizedBox(width: 8),
@@ -357,41 +494,23 @@ class _BalanceCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Text(
-            '2,350',
-            style: TextStyle(
+            '$balance',
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 38,
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 2),
-          Text(
+          const SizedBox(height: 2),
+          const Text(
             'KM Points',
             style: TextStyle(
               color: Colors.white70,
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
-          ),
-          SizedBox(height: 18),
-          Row(
-            children: [
-              Icon(
-                Icons.trending_up_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-              SizedBox(width: 6),
-              Text(
-                '+304 puntos este mes',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -420,11 +539,13 @@ class _SummaryCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.black.withValues(alpha: 0.04),
+          color:
+              Colors.black.withValues(alpha: 0.04),
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
@@ -433,7 +554,8 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment:
+                CrossAxisAlignment.end,
             children: [
               Flexible(
                 child: Text(
@@ -448,7 +570,8 @@ class _SummaryCard extends StatelessWidget {
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: 4),
                 Padding(
-                  padding: const EdgeInsets.only(
+                  padding:
+                      const EdgeInsets.only(
                     bottom: 2,
                   ),
                   child: Text(
@@ -476,6 +599,66 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+class _ExpirationCard extends StatelessWidget {
+  const _ExpirationCard({
+    required this.expirations,
+  });
+
+  final List<UpcomingPointExpiration>
+      expirations;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = expirations.first;
+    final notified = expirations
+        .where((item) => item.shouldNotify)
+        .toList();
+
+    final expiration =
+        notified.isNotEmpty ? notified.first : first;
+
+    final text = expiration.shouldNotify
+        ? '${expiration.remainingPoints} puntos '
+            'vencen en ${expiration.daysRemaining} días.'
+        : 'Próximo vencimiento: '
+            '${expiration.remainingPoints} puntos '
+            'en ${expiration.daysRemaining} días.';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color:
+              Colors.black.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.event_busy_outlined,
+            color: AppColors.primary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.textDark,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HistoryFilters extends StatelessWidget {
   const _HistoryFilters({
     required this.selectedFilter,
@@ -495,7 +678,8 @@ class _HistoryFilters extends StatelessWidget {
           _FilterChip(
             label: 'Todos',
             isSelected:
-                selectedFilter == HistoryMovementType.all,
+                selectedFilter ==
+                HistoryMovementType.all,
             onTap: () {
               onFilterSelected(
                 HistoryMovementType.all,
@@ -506,7 +690,8 @@ class _HistoryFilters extends StatelessWidget {
           _FilterChip(
             label: 'Ganados',
             isSelected:
-                selectedFilter == HistoryMovementType.earned,
+                selectedFilter ==
+                HistoryMovementType.earned,
             onTap: () {
               onFilterSelected(
                 HistoryMovementType.earned,
@@ -515,12 +700,25 @@ class _HistoryFilters extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _FilterChip(
-            label: 'Pendientes',
+            label: 'Canjeados',
             isSelected:
-                selectedFilter == HistoryMovementType.pending,
+                selectedFilter ==
+                HistoryMovementType.redeemed,
             onTap: () {
               onFilterSelected(
-                HistoryMovementType.pending,
+                HistoryMovementType.redeemed,
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+          _FilterChip(
+            label: 'Vencidos',
+            isSelected:
+                selectedFilter ==
+                HistoryMovementType.expired,
+            onTap: () {
+              onFilterSelected(
+                HistoryMovementType.expired,
               );
             },
           ),
@@ -529,7 +727,7 @@ class _HistoryFilters extends StatelessWidget {
             label: 'Ajustes',
             isSelected:
                 selectedFilter ==
-                    HistoryMovementType.adjustment,
+                HistoryMovementType.adjustment,
             onTap: () {
               onFilterSelected(
                 HistoryMovementType.adjustment,
@@ -562,12 +760,16 @@ class _FilterChip extends StatelessWidget {
         onTap();
       },
       selectedColor:
-          AppColors.primary.withValues(alpha: 0.14),
+          AppColors.primary.withValues(
+        alpha: 0.14,
+      ),
       backgroundColor: Colors.white,
       side: BorderSide(
         color: isSelected
             ? AppColors.primary
-            : Colors.black.withValues(alpha: 0.08),
+            : Colors.black.withValues(
+                alpha: 0.08,
+              ),
       ),
       labelStyle: TextStyle(
         color: isSelected
@@ -585,30 +787,99 @@ class _FilterChip extends StatelessWidget {
 class _MovementCard extends StatelessWidget {
   const _MovementCard({
     required this.movement,
+    required this.movementType,
     required this.onTap,
   });
 
-  final HistoryMovement movement;
+  final PointHistoryItem movement;
+  final HistoryMovementType movementType;
   final VoidCallback onTap;
 
   Color get _statusColor {
-    switch (movement.type) {
+    switch (movementType) {
       case HistoryMovementType.earned:
         return Colors.green;
-      case HistoryMovementType.pending:
-        return Colors.orange;
+      case HistoryMovementType.redeemed:
+        return Colors.deepOrange;
+      case HistoryMovementType.expired:
+        return Colors.red;
       case HistoryMovementType.adjustment:
         return Colors.blue;
+      case HistoryMovementType.other:
       case HistoryMovementType.all:
         return AppColors.primary;
     }
   }
 
-  String get _pointsText {
-    if (movement.type == HistoryMovementType.pending) {
-      return 'En revisión';
+  IconData get _icon {
+    final activity =
+        movement.activityType?.toLowerCase() ?? '';
+
+    if (activity.contains('run')) {
+      return Icons.directions_run_rounded;
     }
 
+    if (activity.contains('ride') ||
+        activity.contains('cycl')) {
+      return Icons.directions_bike_rounded;
+    }
+
+    if (activity.contains('walk') ||
+        activity.contains('hike')) {
+      return Icons.directions_walk_rounded;
+    }
+
+    if (activity.contains('swim')) {
+      return Icons.pool_rounded;
+    }
+
+    switch (movementType) {
+      case HistoryMovementType.earned:
+        return Icons.stars_rounded;
+      case HistoryMovementType.redeemed:
+        return Icons.shopping_bag_outlined;
+      case HistoryMovementType.expired:
+        return Icons.event_busy_outlined;
+      case HistoryMovementType.adjustment:
+        return Icons.tune_rounded;
+      case HistoryMovementType.other:
+      case HistoryMovementType.all:
+        return Icons.receipt_long_outlined;
+    }
+  }
+
+  String get _title {
+    if (movement.activityType != null &&
+        movement.activityType!.trim().isNotEmpty) {
+      return _activityLabel(
+        movement.activityType!,
+      );
+    }
+
+    switch (movementType) {
+      case HistoryMovementType.earned:
+        return 'Puntos obtenidos';
+      case HistoryMovementType.redeemed:
+        return 'Canje de puntos';
+      case HistoryMovementType.expired:
+        return 'Puntos vencidos';
+      case HistoryMovementType.adjustment:
+        return 'Ajuste de puntos';
+      case HistoryMovementType.other:
+      case HistoryMovementType.all:
+        return _typeLabel(movement.type);
+    }
+  }
+
+  String get _subtitle {
+    if (movement.stravaActivityId != null) {
+      return 'Actividad de Strava';
+    }
+
+    return _typeLabel(movement.type);
+  }
+
+  String get _pointsText {
     if (movement.points > 0) {
       return '+${movement.points} pts';
     }
@@ -623,7 +894,8 @@ class _MovementCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(17),
           child: Row(
@@ -632,13 +904,15 @@ class _MovementCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: _statusColor.withValues(
+                  color:
+                      _statusColor.withValues(
                     alpha: 0.12,
                   ),
-                  borderRadius: BorderRadius.circular(17),
+                  borderRadius:
+                      BorderRadius.circular(17),
                 ),
                 child: Icon(
-                  movement.icon,
+                  _icon,
                   color: _statusColor,
                   size: 26,
                 ),
@@ -650,16 +924,18 @@ class _MovementCard extends StatelessWidget {
                       CrossAxisAlignment.start,
                   children: [
                     Text(
-                      movement.title,
+                      _title,
                       style: const TextStyle(
-                        color: AppColors.textDark,
+                        color:
+                            AppColors.textDark,
                         fontSize: 15,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      movement.subtitle,
+                      _subtitle,
                       style: const TextStyle(
                         color: Colors.black54,
                         fontSize: 12,
@@ -667,7 +943,9 @@ class _MovementCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      movement.date,
+                      _formatDate(
+                        movement.createdAtUtc,
+                      ),
                       style: const TextStyle(
                         color: Colors.black38,
                         fontSize: 12,
@@ -686,7 +964,8 @@ class _MovementCard extends StatelessWidget {
                     style: TextStyle(
                       color: _statusColor,
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -704,21 +983,27 @@ class _MovementCard extends StatelessWidget {
   }
 }
 
-class _MovementDetailsSheet extends StatelessWidget {
+class _MovementDetailsSheet
+    extends StatelessWidget {
   const _MovementDetailsSheet({
     required this.movement,
+    required this.movementType,
   });
 
-  final HistoryMovement movement;
+  final PointHistoryItem movement;
+  final HistoryMovementType movementType;
 
   Color get _statusColor {
-    switch (movement.type) {
+    switch (movementType) {
       case HistoryMovementType.earned:
         return Colors.green;
-      case HistoryMovementType.pending:
-        return Colors.orange;
+      case HistoryMovementType.redeemed:
+        return Colors.deepOrange;
+      case HistoryMovementType.expired:
+        return Colors.red;
       case HistoryMovementType.adjustment:
         return Colors.blue;
+      case HistoryMovementType.other:
       case HistoryMovementType.all:
         return AppColors.primary;
     }
@@ -726,6 +1011,18 @@ class _MovementDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final distance =
+        movement.distanceKilometers == null
+            ? 'No aplica'
+            : '${movement.distanceKilometers!.toStringAsFixed(2)} km';
+
+    final expiration =
+        movement.expiresAtUtc == null
+            ? 'No aplica'
+            : _formatDate(
+                movement.expiresAtUtc!,
+              );
+
     return Container(
       padding: const EdgeInsets.fromLTRB(
         24,
@@ -749,28 +1046,19 @@ class _MovementDetailsSheet extends StatelessWidget {
               height: 5,
               decoration: BoxDecoration(
                 color: Colors.black12,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius:
+                    BorderRadius.circular(20),
               ),
             ),
             const SizedBox(height: 22),
-            Container(
-              width: 68,
-              height: 68,
-              decoration: BoxDecoration(
-                color: _statusColor.withValues(
-                  alpha: 0.12,
-                ),
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Icon(
-                movement.icon,
-                color: _statusColor,
-                size: 34,
-              ),
+            Icon(
+              Icons.receipt_long_rounded,
+              color: _statusColor,
+              size: 44,
             ),
             const SizedBox(height: 16),
             Text(
-              movement.title,
+              _typeLabel(movement.type),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: AppColors.textDark,
@@ -780,7 +1068,9 @@ class _MovementDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              movement.date,
+              _formatDate(
+                movement.createdAtUtc,
+              ),
               style: const TextStyle(
                 color: Colors.black45,
                 fontSize: 13,
@@ -791,37 +1081,47 @@ class _MovementDetailsSheet extends StatelessWidget {
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: AppColors.background,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius:
+                    BorderRadius.circular(20),
               ),
               child: Column(
                 children: [
                   _DetailRow(
-                    label: 'Distancia',
-                    value: movement.distance,
-                  ),
-                  const Divider(height: 26),
-                  _DetailRow(
-                    label: 'Duración',
-                    value: movement.duration,
-                  ),
-                  const Divider(height: 26),
-                  _DetailRow(
                     label: 'Puntos',
-                    value: movement.type ==
-                            HistoryMovementType.pending
-                        ? 'Pendientes'
-                        : '${movement.points} puntos',
-                  ),
-                  const Divider(height: 26),
-                  _DetailRow(
-                    label: 'Estado',
-                    value: movement.status,
+                    value:
+                        '${movement.points} puntos',
                     valueColor: _statusColor,
                   ),
                   const Divider(height: 26),
                   _DetailRow(
+                    label: 'Distancia',
+                    value: distance,
+                  ),
+                  const Divider(height: 26),
+                  _DetailRow(
+                    label: 'Actividad',
+                    value:
+                        movement.activityType ==
+                                null
+                            ? 'No aplica'
+                            : _activityLabel(
+                                movement
+                                    .activityType!,
+                              ),
+                  ),
+                  const Divider(height: 26),
+                  _DetailRow(
+                    label: 'Vencimiento',
+                    value: expiration,
+                  ),
+                  const Divider(height: 26),
+                  _DetailRow(
                     label: 'Origen',
-                    value: movement.source,
+                    value:
+                        movement.stravaActivityId ==
+                                null
+                            ? 'App KM'
+                            : 'Strava',
                   ),
                 ],
               ),
@@ -867,15 +1167,63 @@ class _DetailRow extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? AppColors.textDark,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color:
+                  valueColor ?? AppColors.textDark,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            color: Colors.black38,
+            size: 48,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textDark,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: onRetry,
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -912,7 +1260,8 @@ class _EmptyHistory extends StatelessWidget {
           ),
           SizedBox(height: 7),
           Text(
-            'No encontramos registros para el filtro seleccionado.',
+            'No encontramos registros para el '
+            'filtro seleccionado.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.black45,
@@ -923,4 +1272,93 @@ class _EmptyHistory extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatDate(DateTime date) {
+  final local = date.toLocal();
+
+  const months = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  return '${local.day} de '
+      '${months[local.month - 1]} de '
+      '${local.year}';
+}
+
+String _typeLabel(String value) {
+  final normalized = value
+      .replaceAll('_', ' ')
+      .replaceAll('-', ' ')
+      .trim();
+
+  if (normalized.isEmpty) {
+    return 'Movimiento de puntos';
+  }
+
+  final lower = normalized.toLowerCase();
+
+  if (lower.contains('earn') ||
+      lower.contains('award')) {
+    return 'Puntos obtenidos';
+  }
+
+  if (lower.contains('redeem')) {
+    return 'Canje de puntos';
+  }
+
+  if (lower.contains('expire')) {
+    return 'Puntos vencidos';
+  }
+
+  if (lower.contains('adjust')) {
+    return 'Ajuste de puntos';
+  }
+
+  return normalized[0].toUpperCase() +
+      normalized.substring(1);
+}
+
+String _activityLabel(String value) {
+  final lower = value.toLowerCase();
+
+  if (lower.contains('run')) {
+    return 'Carrera';
+  }
+
+  if (lower.contains('ride') ||
+      lower.contains('cycl')) {
+    return 'Ciclismo';
+  }
+
+  if (lower.contains('walk')) {
+    return 'Caminata';
+  }
+
+  if (lower.contains('hike')) {
+    return 'Senderismo';
+  }
+
+  if (lower.contains('swim')) {
+    return 'Natación';
+  }
+
+  if (lower.contains('workout') ||
+      lower.contains('weight') ||
+      lower.contains('gym')) {
+    return 'Gimnasio';
+  }
+
+  return value;
 }
