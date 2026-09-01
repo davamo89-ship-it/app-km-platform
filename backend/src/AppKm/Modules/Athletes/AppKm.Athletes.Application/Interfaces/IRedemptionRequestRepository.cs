@@ -19,11 +19,17 @@ public interface IRedemptionRequestRepository
     Task<IReadOnlyList<RedemptionRequest>> GetByAthleteAsync(
         Guid athleteId,
         CancellationToken cancellationToken);
+
     Task<int> GetPendingReservedPointsAsync(
         Guid athleteId,
         DateTimeOffset now,
         CancellationToken cancellationToken);
+
     Task<RedemptionRequest?> GetPendingConfirmationByAthleteAsync(
         Guid athleteId,
+        CancellationToken cancellationToken);
+
+    Task<RedemptionRequest?> GetLatestByMerchantAsync(
+        Guid merchantId,
         CancellationToken cancellationToken);
 }

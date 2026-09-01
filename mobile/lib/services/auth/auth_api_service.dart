@@ -6,18 +6,24 @@ import '../../core/config/api_config.dart';
 import '../../models/auth/login_response.dart';
 
 class AuthApiException implements Exception {
-  const AuthApiException(this.message, {this.statusCode});
+  const AuthApiException(
+    this.message, {
+    this.statusCode,
+    this.code,
+  });
 
   final String message;
   final int? statusCode;
+  final String? code;
 
   @override
   String toString() => message;
 }
 
 class AuthApiService {
-  AuthApiService({http.Client? client})
-      : _client = client ?? http.Client();
+  AuthApiService({
+    http.Client? client,
+  }) : _client = client ?? http.Client();
 
   final http.Client _client;
 
@@ -25,113 +31,127 @@ class AuthApiService {
     required String email,
     required String password,
   }) async {
-    final uri = ApiConfig.identityUri(
-      '/api/v1/identity/login',
-    );
-
     final response = await _client.post(
-      uri,
-      headers: const {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      ApiConfig.identityUri('/api/v1/identity/login'),
+      headers: _headers,
       body: jsonEncode({
         'email': email.trim(),
         'password': password,
       }),
     );
 
-    if (response.statusCode == 200) {
-      final json = jsonDecode(response.body)
-          as Map<String, dynamic>;
+    return LoginResponse.fromJson(
+      _decodeObject(response),
+    );
+  }
 
-      return LoginResponse.fromJson(json);
+  Future<LoginResponse> refresh({
+    required String refreshToken,
+  }) async {
+    final response = await _client.post(
+      ApiConfig.identityUri('/api/v1/identity/refresh'),
+      headers: _headers,
+      body: jsonEncode({
+        'refreshToken': refreshToken,
+      }),
+    );
+
+    return LoginResponse.fromJson(
+      _decodeObject(response),
+    );
+  }
+
+  Future<void> logout({
+    required String refreshToken,
+  }) async {
+    final response = await _client.post(
+      ApiConfig.identityUri('/api/v1/identity/logout'),
+      headers: _headers,
+      body: jsonEncode({
+        'refreshToken': refreshToken,
+      }),
+    );
+
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300) {
+      return;
     }
 
-    if (response.statusCode == 401) {
-      throw const AuthApiException(
-        'Correo electrónico o contraseña incorrectos.',
-        statusCode: 401,
+    _throwApiException(response);
+  }
+
+  Map<String, dynamic> _decodeObject(
+    http.Response response,
+  ) {
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300) {
+      _throwApiException(response);
+    }
+
+    final body = utf8.decode(response.bodyBytes);
+
+    if (body.trim().isEmpty) {
+      throw AuthApiException(
+        'El servidor devolvió una respuesta vacía.',
+        statusCode: response.statusCode,
       );
     }
 
-    if (response.statusCode == 403) {
-      throw const AuthApiException(
-        'Su usuario no tiene acceso autorizado.',
-        statusCode: 403,
+    final decoded = jsonDecode(body);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw AuthApiException(
+        'La respuesta del servidor no tiene el formato esperado.',
+        statusCode: response.statusCode,
       );
+    }
+
+    return decoded;
+  }
+
+  Never _throwApiException(
+    http.Response response,
+  ) {
+    String message =
+        'No fue posible completar la solicitud.';
+    String? code;
+
+    if (response.bodyBytes.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(
+          utf8.decode(response.bodyBytes),
+        );
+
+        if (decoded is Map<String, dynamic>) {
+          final serverMessage = decoded['message'];
+          final serverCode = decoded['code'];
+
+          if (serverMessage is String &&
+              serverMessage.trim().isNotEmpty) {
+            message = serverMessage;
+          }
+
+          if (serverCode is String &&
+              serverCode.trim().isNotEmpty) {
+            code = serverCode;
+          }
+        }
+      } on FormatException {
+        // Conserva el mensaje genérico.
+      }
     }
 
     throw AuthApiException(
-      'No fue posible iniciar sesión.',
+      message,
       statusCode: response.statusCode,
+      code: code,
     );
   }
-  
-  Future<LoginResponse> refresh({
-  required String refreshToken,
-    }) async {
-      final uri = ApiConfig.identityUri(
-        '/api/v1/identity/refresh',
-      );
 
-      final response = await _client.post(
-        uri,
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'refreshToken': refreshToken,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final json =
-            jsonDecode(response.body) as Map<String, dynamic>;
-
-        return LoginResponse.fromJson(json);
-      }
-
-      if (response.statusCode == 401) {
-        throw const AuthApiException(
-          'La sesión ha expirado.',
-          statusCode: 401,
-        );
-      }
-
-      throw AuthApiException(
-        'No fue posible renovar la sesión.',
-        statusCode: response.statusCode,
-      );
-    }
-  
-     Future<void> logout({
-      required String refreshToken,
-    }) async {
-      final uri = ApiConfig.identityUri('/api/v1/identity/logout');
-
-      final response = await _client.post(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'refreshToken': refreshToken,
-        }),
-      );
-
-      if (response.statusCode == 200 ||
-          response.statusCode == 204) {
-        return;
-      }
-
-      throw AuthApiException(
-        'No fue posible cerrar la sesión.',
-        statusCode: response.statusCode,
-      );
-    }
+  Map<String, String> get _headers => const {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
 
   void dispose() {
     _client.close();

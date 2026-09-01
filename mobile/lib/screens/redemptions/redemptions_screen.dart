@@ -16,7 +16,8 @@ class RedemptionsScreen extends StatefulWidget {
 }
 
 class _RedemptionsScreenState
-    extends State<RedemptionsScreen> {
+    extends State<RedemptionsScreen>
+    with WidgetsBindingObserver {
   final RedemptionsBackendApiService _redemptionsApi =
       RedemptionsBackendApiService();
 
@@ -29,16 +30,30 @@ class _RedemptionsScreenState
 
   bool _isLoading = true;
   bool _isProcessing = false;
+  bool _hasLoadedOnce = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(
+    AppLifecycleState state,
+  ) {
+    if (state == AppLifecycleState.resumed &&
+        !_isProcessing &&
+        !_isLoading) {
+      _load();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _redemptionsApi.dispose();
     _pointsApi.dispose();
     super.dispose();
@@ -47,9 +62,17 @@ class _RedemptionsScreenState
   Future<void> _load({
     bool showSuccessMessage = false,
   }) async {
+    if (_isLoading && _hasLoadedOnce) {
+      return;
+    }
+
+    final isInitialLoad = !_hasLoadedOnce;
+
     if (mounted) {
       setState(() {
-        _isLoading = true;
+        if (isInitialLoad) {
+          _isLoading = true;
+        }
         _errorMessage = null;
       });
     }
@@ -75,6 +98,8 @@ class _RedemptionsScreenState
         _requests = requests;
         _pendingConfirmation = pending;
         _isLoading = false;
+        _hasLoadedOnce = true;
+        _errorMessage = null;
       });
 
       if (showSuccessMessage) {
@@ -83,10 +108,25 @@ class _RedemptionsScreenState
     } catch (error) {
       if (!mounted) return;
 
+      final friendlyMessage = _friendlyError(error);
+
+      if (isInitialLoad) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = friendlyMessage;
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
-        _errorMessage = _friendlyError(error);
       });
+
+      _showMessage(
+        '$friendlyMessage '
+        'Se mantienen los últimos datos disponibles.',
+        isError: true,
+      );
     }
   }
 
@@ -203,12 +243,13 @@ class _RedemptionsScreenState
     if (pending == null) return;
 
     final confirmed = await _confirmDialog(
-      title: 'Rechazar propuesta',
+      title: 'Cancelar',
       message:
-          '¿Desea rechazar la propuesta de '
+          '¿Desea cancelar el canje en '
           '${pending.merchantName} por '
           '${pending.proposedPoints} KM Points?',
-      confirmText: 'Rechazar',
+      confirmText: 'Sí',
+      cancelText: 'No',
     );
 
     if (!confirmed) {
@@ -219,7 +260,7 @@ class _RedemptionsScreenState
       () => _redemptionsApi.reject(
         code: pending.code,
       ),
-      successMessage: 'Propuesta rechazada.',
+      successMessage: 'Propuesta cancelada.',
     );
   }
 
@@ -258,6 +299,7 @@ class _RedemptionsScreenState
     required String title,
     required String message,
     required String confirmText,
+    String cancelText = 'Volver',
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -270,7 +312,7 @@ class _RedemptionsScreenState
               onPressed: () {
                 Navigator.pop(context, false);
               },
-              child: const Text('Volver'),
+              child: Text(cancelText),
             ),
             FilledButton(
               onPressed: () {
@@ -295,18 +337,39 @@ class _RedemptionsScreenState
       return error.message;
     }
 
-    return 'No fue posible procesar el canje.';
+    return 'No fue posible comunicarse con el servicio de canjes.';
   }
 
   void _showMessage(
     String message, {
     bool isError = false,
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError
+                    ? Icons.wifi_off_rounded
+                    : Icons.check_circle_outline_rounded,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(message),
+              ),
+            ],
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(
+            seconds: isError ? 5 : 3,
+          ),
+        ),
+      );
   }
 
   @override
@@ -395,6 +458,27 @@ class _RedemptionsScreenState
       );
     }
 
+    final activeRequests = _requests
+        .where(
+          (request) =>
+              !_isClosedRedemptionStatus(request.status),
+        )
+        .toList();
+
+    final historyRequests = _requests
+        .where(
+          (request) =>
+              _isClosedRedemptionStatus(request.status),
+        )
+        .toList();
+
+    final completedCount = _requests
+        .where(
+          (request) =>
+              request.status.toLowerCase() == 'completed',
+        )
+        .length;
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
@@ -404,39 +488,41 @@ class _RedemptionsScreenState
         110,
       ),
       children: [
+        const _CanjesIntro(),
+        const SizedBox(height: 16),
         _BalanceCard(balance: _balance),
+        const SizedBox(height: 14),
+        _CanjesSummary(
+          pendingDecision:
+              _pendingConfirmation == null ? 0 : 1,
+          activeCodes: activeRequests.length,
+          completed: completedCount,
+        ),
         if (_pendingConfirmation != null) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
+          const _SectionHeader(
+            title: 'Requiere su decisión',
+            subtitle:
+                'Revise el comercio y la cantidad antes de confirmar.',
+          ),
+          const SizedBox(height: 12),
           _PendingConfirmationCard(
             pending: _pendingConfirmation!,
             onConfirm: _confirmMerchantProposal,
             onReject: _rejectMerchantProposal,
           ),
         ],
-        const SizedBox(height: 24),
-        const Text(
-          'Mis solicitudes',
-          style: TextStyle(
-            color: AppColors.textDark,
-            fontSize: 19,
-            fontWeight: FontWeight.bold,
-          ),
+        const SizedBox(height: 26),
+        const _SectionHeader(
+          title: 'Códigos activos',
+          subtitle:
+              'Muestre el código al comercio. El comercio no puede cambiar la cantidad solicitada.',
         ),
-        const SizedBox(height: 6),
-        const Text(
-          'Genere un código y muéstrelo al comercio. '
-          'Los puntos solo se descuentan cuando usted '
-          'confirma la propuesta del comercio.',
-          style: TextStyle(
-            color: Colors.black54,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_requests.isEmpty)
-          const _EmptyRedemptions()
+        const SizedBox(height: 14),
+        if (activeRequests.isEmpty)
+          const _EmptyActiveRedemptions()
         else
-          ..._requests.map(
+          ...activeRequests.map(
             (request) => Padding(
               padding:
                   const EdgeInsets.only(bottom: 12),
@@ -448,6 +534,226 @@ class _RedemptionsScreenState
               ),
             ),
           ),
+        const SizedBox(height: 22),
+        const _SectionHeader(
+          title: 'Historial',
+          subtitle:
+              'Aquí quedan los canjes completados, rechazados, cancelados o vencidos.',
+        ),
+        const SizedBox(height: 14),
+        if (historyRequests.isEmpty)
+          const _EmptyHistoryRedemptions()
+        else
+          ...historyRequests.map(
+            (request) => Padding(
+              padding:
+                  const EdgeInsets.only(bottom: 12),
+              child: _RedemptionCard(
+                request: request,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+
+class _CanjesIntro extends StatelessWidget {
+  const _CanjesIntro();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.redeem_rounded,
+            color: AppColors.primary,
+            size: 30,
+          ),
+          SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Centro de Canjes',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Genere códigos, revise solicitudes pendientes '
+                  'y consulte el historial de sus KM Points.',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CanjesSummary extends StatelessWidget {
+  const _CanjesSummary({
+    required this.pendingDecision,
+    required this.activeCodes,
+    required this.completed,
+  });
+
+  final int pendingDecision;
+  final int activeCodes;
+  final int completed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _SummaryMetric(
+            value: '$pendingDecision',
+            label: 'Por decidir',
+            icon: Icons.notification_important_outlined,
+            emphasized: pendingDecision > 0,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SummaryMetric(
+            value: '$activeCodes',
+            label: 'Activos',
+            icon: Icons.qr_code_2_rounded,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SummaryMetric(
+            value: '$completed',
+            label: 'Completados',
+            icon: Icons.check_circle_outline_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.value,
+    required this.label,
+    required this.icon,
+    this.emphasized = false,
+  });
+
+  final String value;
+  final String label;
+  final IconData icon;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground =
+        emphasized ? AppColors.primary : AppColors.textDark;
+    final background = emphasized
+        ? AppColors.primary.withValues(alpha: 0.10)
+        : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 14,
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: emphasized
+              ? AppColors.primary.withValues(alpha: 0.25)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            color: foreground,
+            size: 22,
+          ),
+          const SizedBox(height: 7),
+          Text(
+            value,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.textDark,
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: Colors.black54,
+            height: 1.4,
+          ),
+        ),
       ],
     );
   }
@@ -569,13 +875,26 @@ class _PendingConfirmationCard
               ),
               const SizedBox(width: 12),
               const Expanded(
-                child: Text(
-                  'Confirmación pendiente',
-                  style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Confirmación pendiente',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'El canje no se completa hasta que usted decida.',
+                      style: TextStyle(
+                        color: Colors.black45,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -620,7 +939,7 @@ class _PendingConfirmationCard
               Expanded(
                 child: OutlinedButton(
                   onPressed: onReject,
-                  child: const Text('Rechazar'),
+                  child: const Text('Cancelar'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1046,9 +1365,10 @@ class _CreatedCodeSheet
             ),
             const SizedBox(height: 8),
             const Text(
-              'El comercio utilizará este código para '
-              'proponer el monto. Después usted deberá '
-              'confirmar o rechazar la propuesta.',
+              'El comercio utilizará este código para solicitar '
+              'el canje exacto de estos puntos. El comercio no '
+              'puede cambiar la cantidad. Después usted deberá '
+              'confirmar o cancelar el canje.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black54,
@@ -1072,42 +1392,80 @@ class _CreatedCodeSheet
   }
 }
 
-class _EmptyRedemptions extends StatelessWidget {
-  const _EmptyRedemptions();
+class _EmptyActiveRedemptions extends StatelessWidget {
+  const _EmptyActiveRedemptions();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _EmptySectionCard(
+      icon: Icons.qr_code_2_rounded,
+      title: 'No hay códigos activos',
+      message:
+          'Cuando genere un nuevo código de canje, aparecerá aquí.',
+    );
+  }
+}
+
+class _EmptyHistoryRedemptions extends StatelessWidget {
+  const _EmptyHistoryRedemptions();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _EmptySectionCard(
+      icon: Icons.history_rounded,
+      title: 'Todavía no hay historial',
+      message:
+          'Los canjes finalizados aparecerán en esta sección.',
+    );
+  }
+}
+
+class _EmptySectionCard extends StatelessWidget {
+  const _EmptySectionCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 24,
-        vertical: 40,
+        vertical: 30,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.05),
+        ),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(
-            Icons.qr_code_2_rounded,
-            size: 55,
+            icon,
+            size: 46,
             color: Colors.black26,
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
-            'Todavía no tiene canjes',
-            style: TextStyle(
+            title,
+            style: const TextStyle(
               color: AppColors.textDark,
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 7),
+          const SizedBox(height: 6),
           Text(
-            'Cuando cree un código, aparecerá aquí '
-            'junto con su estado.',
+            message,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.black45,
               height: 1.4,
             ),
@@ -1143,6 +1501,16 @@ class _ErrorCard extends StatelessWidget {
             size: 48,
           ),
           const SizedBox(height: 14),
+          const Text(
+            'No pudimos cargar sus canjes',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textDark,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 7),
           Text(
             message,
             textAlign: TextAlign.center,
@@ -1162,6 +1530,19 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
+bool _isClosedRedemptionStatus(String status) {
+  switch (status.toLowerCase()) {
+    case 'completed':
+    case 'expired':
+    case 'cancelled':
+    case 'canceled':
+    case 'rejected':
+      return true;
+    default:
+      return false;
+  }
+}
+
 Color _statusColor(String status) {
   switch (status.toLowerCase()) {
     case 'pending':
@@ -1175,7 +1556,8 @@ Color _statusColor(String status) {
       return Colors.blueGrey;
     case 'merchantproposed':
     case 'pendingathleteconfirmation':
-      return AppColors.primary;
+    case 'awaitingathleteconfirmation':
+      return Colors.orange;
     case 'rejected':
       return Colors.redAccent;
     default:
@@ -1196,7 +1578,8 @@ String _statusLabel(String status) {
       return 'Cancelado';
     case 'merchantproposed':
     case 'pendingathleteconfirmation':
-      return 'Por confirmar';
+    case 'awaitingathleteconfirmation':
+      return 'Pendiente de tu confirmación';
     case 'rejected':
       return 'Rechazado';
     default:

@@ -47,41 +47,57 @@ internal sealed class RedemptionRequestRepository
     }
 
     public async Task<IReadOnlyList<RedemptionRequest>> GetByAthleteAsync(
-            Guid athleteId,
-            CancellationToken cancellationToken)
-        {
-            return await _dbContext.RedemptionRequests
-                .Where(request =>
-                    request.AthleteId == athleteId)
-                .OrderByDescending(request =>
-                    request.CreatedAtUtc)
-                .ToListAsync(cancellationToken);
-        }
+        Guid athleteId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.RedemptionRequests
+            .Where(request =>
+                request.AthleteId == athleteId)
+            .OrderByDescending(request =>
+                request.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<int> GetPendingReservedPointsAsync(
-    Guid athleteId,
-    DateTimeOffset now,
-    CancellationToken cancellationToken)
-        {
-            return _dbContext.RedemptionRequests
-                .Where(request =>
-                    request.AthleteId == athleteId &&
-                    request.Status == RedemptionRequestStatus.Pending &&
-                    request.ExpiresAtUtc > now)
-                .SumAsync(
-                    request => request.RequestedPoints,
-                    cancellationToken);
-        }
-            public Task<RedemptionRequest?> GetPendingConfirmationByAthleteAsync(
-            Guid athleteId,
-            CancellationToken cancellationToken)
-        {
-            return _dbContext.RedemptionRequests
-                .Where(request =>
-                    request.AthleteId == athleteId &&
-                    request.Status ==
-                        RedemptionRequestStatus.AwaitingAthleteConfirmation)
-                .OrderByDescending(request =>
-                    request.MerchantProposedAtUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-        }
+        Guid athleteId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        return _dbContext.RedemptionRequests
+            .Where(request =>
+                request.AthleteId == athleteId &&
+                request.Status == RedemptionRequestStatus.Pending &&
+                request.ExpiresAtUtc > now)
+            .SumAsync(
+                request => request.RequestedPoints,
+                cancellationToken);
+    }
+
+    public Task<RedemptionRequest?> GetPendingConfirmationByAthleteAsync(
+        Guid athleteId,
+        CancellationToken cancellationToken)
+    {
+        return _dbContext.RedemptionRequests
+            .Where(request =>
+                request.AthleteId == athleteId &&
+                request.Status ==
+                    RedemptionRequestStatus.AwaitingAthleteConfirmation)
+            .OrderByDescending(request =>
+                request.MerchantProposedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<RedemptionRequest?> GetLatestByMerchantAsync(
+        Guid merchantId,
+        CancellationToken cancellationToken)
+    {
+        return _dbContext.RedemptionRequests
+            .Where(request =>
+                request.MerchantId == merchantId)
+            .OrderByDescending(request =>
+                request.MerchantProposedAtUtc)
+            .ThenByDescending(request =>
+                request.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 }

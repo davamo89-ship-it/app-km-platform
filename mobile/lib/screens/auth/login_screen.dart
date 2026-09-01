@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_dependencies.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
-import '../../services/strava/strava_connection_controller.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
+import '../../services/auth/role_access_service.dart';
+import '../merchants/merchant_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,235 +21,141 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final AuthApiService _authApiService = AuthApiService();
   final AuthTokenStore _authTokenStore = AuthTokenStore();
-
-  late final StravaConnectionController _stravaConnectionController;
+  final RoleAccessService _roleAccessService =
+      RoleAccessService();
 
   bool _isLoggingIn = false;
-
   bool _obscurePassword = true;
-  bool _openingStrava = false;
-  bool _navigatedAfterStravaConnection = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    final dependencies = AppDependencies.instance;
-
-    if (!dependencies.isInitialized) {
-      dependencies.initialize();
-    }
-
-    _stravaConnectionController =
-        dependencies.stravaConnectionController;
-
-    _stravaConnectionController.addListener(
-      _handleStravaConnectionChange,
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _handleStravaConnectionChange();
-    });
-  }
 
   @override
   void dispose() {
-    _stravaConnectionController.removeListener(
-      _handleStravaConnectionChange,
-    );
-
     _emailController.dispose();
     _passwordController.dispose();
     _authApiService.dispose();
+    _roleAccessService.dispose();
 
     super.dispose();
   }
 
-  void _handleStravaConnectionChange() {
-    if (!mounted) {
+  Future<void> _login() async {
+    final formState = _formKey.currentState;
+
+    if (formState == null || !formState.validate()) {
       return;
     }
 
-    final controller = _stravaConnectionController;
-
-    if (controller.isConnected &&
-        !_navigatedAfterStravaConnection) {
-      _navigatedAfterStravaConnection = true;
-
-      Navigator.pushReplacementNamed(
-        context,
-        AppRoutes.dashboard,
-      );
-
-      return;
-    }
-
-    if (controller.hasError) {
-      setState(() {
-        _openingStrava = false;
-      });
-
-      final message =
-          controller.errorMessage ??
-          'No fue posible completar la conexión con Strava.';
-
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(message),
-          ),
-        );
-
-      controller.clearError();
-      return;
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-Future<void> _login() async {
-  final formState = _formKey.currentState;
-
-  if (formState == null || !formState.validate()) {
-    return;
-  }
-
-  if (_isLoggingIn) {
-    return;
-  }
-
-  setState(() {
-    _isLoggingIn = true;
-  });
-
-  try {
-    final result = await _authApiService.login(
-      email: _emailController.text,
-      password: _passwordController.text,      
-    );
-    await _authTokenStore.saveSession(result);
-
-    debugPrint('Login correcto: ${result.email}');
-
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.pushReplacementNamed(
-      context,
-      AppRoutes.dashboard,
-    );
-  } on AuthApiException catch (error) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-        ),
-      );
-  } catch (error) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No fue posible conectar con el servidor.',
-          ),
-        ),
-      );
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isLoggingIn = false;
-      });
-    }
-  }
-}
-
-  Future<void> _continueWithStrava() async {
-    if (_openingStrava ||
-        _stravaConnectionController.isAuthorizing) {
+    if (_isLoggingIn) {
       return;
     }
 
     setState(() {
-      _openingStrava = true;
+      _isLoggingIn = true;
     });
 
     try {
-      final authorizationUri =
-          _stravaConnectionController.beginAuthorization();
-         debugPrint('STRAVA URL: $authorizationUri');
-      final opened = await launchUrl(
-        authorizationUri,
-        mode: LaunchMode.externalApplication,
+      final result = await _authApiService.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
       );
 
-      if (!opened) {
-        _stravaConnectionController.cancelAuthorization();
+      await _authTokenStore.saveSession(result);
 
-        throw StateError(
-          'No fue posible abrir la autorización de Strava.',
-        );
-      }
-    } catch (error) {
+      final role =
+          await _roleAccessService.resolveCurrentRole();
+
       if (!mounted) {
         return;
       }
 
-      _stravaConnectionController.cancelAuthorization();
+      await _navigateForRole(role);
+    } on AuthApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
 
-      setState(() {
-        _openingStrava = false;
-      });
+      _showMessage(error.message);
+    } on RoleAccessException catch (error) {
+      await _authTokenStore.clearSession();
 
-      final message = error is StateError
-          ? error.message.toString()
-          : 'No fue posible abrir Strava.';
+      if (!mounted) {
+        return;
+      }
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(message),
+      _showMessage(error.message);
+    } catch (_) {
+      await _authTokenStore.clearSession();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'No fue posible conectar con el servidor.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoggingIn = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _navigateForRole(
+    AppUserRole role,
+  ) async {
+    switch (role) {
+      case AppUserRole.athlete:
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.dashboard,
+        );
+        return;
+
+      case AppUserRole.merchant:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => const MerchantScreen(),
           ),
         );
+        return;
+
+      case AppUserRole.admin:
+        await _authTokenStore.clearSession();
+
+        if (!mounted) {
+          return;
+        }
+
+        _showMessage(
+          'La interfaz de administración todavía '
+          'no está disponible en la app móvil.',
+        );
+        return;
+
+      case AppUserRole.unknown:
+        await _authTokenStore.clearSession();
+
+        if (!mounted) {
+          return;
+        }
+
+        _showMessage(
+          'La cuenta no tiene un rol compatible '
+          'con esta versión de la app.',
+        );
+        return;
     }
   }
 
-  String _stravaButtonLabel() {
-    if (_stravaConnectionController.isChecking) {
-      return 'Comprobando Strava...';
-    }
-
-    if (_openingStrava ||
-        _stravaConnectionController.isAuthorizing) {
-      return 'Abriendo Strava...';
-    }
-
-    if (_stravaConnectionController.isConnected) {
-      return 'Strava conectado';
-    }
-
-    return 'Continuar con Strava';
-  }
-
-  bool get _stravaButtonDisabled {
-    return _stravaConnectionController.isChecking ||
-        _openingStrava ||
-        _stravaConnectionController.isAuthorizing ||
-        _stravaConnectionController.isConnected;
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+        ),
+      );
   }
 
   @override
@@ -306,7 +211,8 @@ Future<void> _login() async {
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius:
+                            BorderRadius.circular(24),
                         boxShadow: const [
                           BoxShadow(
                             color: Colors.black26,
@@ -325,30 +231,40 @@ Future<void> _login() async {
                               'Iniciar sesión',
                               style: TextStyle(
                                 fontSize: 26,
-                                fontWeight: FontWeight.bold,
+                                fontWeight:
+                                    FontWeight.bold,
                                 color: AppColors.textDark,
                               ),
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              'Ingresa para consultar tus puntos y actividades.',
+                              'Ingresa con tu cuenta de atleta o comercio.',
                               style: TextStyle(
                                 color: Colors.black54,
                               ),
                             ),
                             const SizedBox(height: 24),
                             TextFormField(
-                              controller: _emailController,
+                              controller:
+                                  _emailController,
                               keyboardType:
-                                  TextInputType.emailAddress,
-                              decoration: const InputDecoration(
-                                labelText: 'Correo electrónico',
-                                prefixIcon:
-                                    Icon(Icons.email_outlined),
+                                  TextInputType
+                                      .emailAddress,
+                              textInputAction:
+                                  TextInputAction.next,
+                              decoration:
+                                  const InputDecoration(
+                                labelText:
+                                    'Correo electrónico',
+                                prefixIcon: Icon(
+                                  Icons.email_outlined,
+                                ),
                               ),
                               validator: (value) {
                                 if (value == null ||
-                                    value.trim().isEmpty) {
+                                    value
+                                        .trim()
+                                        .isEmpty) {
                                   return 'Ingresa tu correo electrónico';
                                 }
 
@@ -361,13 +277,26 @@ Future<void> _login() async {
                             ),
                             const SizedBox(height: 16),
                             TextFormField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              decoration: InputDecoration(
+                              controller:
+                                  _passwordController,
+                              obscureText:
+                                  _obscurePassword,
+                              textInputAction:
+                                  TextInputAction.done,
+                              onFieldSubmitted: (_) {
+                                if (!_isLoggingIn) {
+                                  _login();
+                                }
+                              },
+                              decoration:
+                                  InputDecoration(
                                 labelText: 'Contraseña',
                                 prefixIcon:
-                                    const Icon(Icons.lock_outline),
-                                suffixIcon: IconButton(
+                                    const Icon(
+                                  Icons.lock_outline,
+                                ),
+                                suffixIcon:
+                                    IconButton(
                                   onPressed: () {
                                     setState(() {
                                       _obscurePassword =
@@ -376,9 +305,10 @@ Future<void> _login() async {
                                   },
                                   icon: Icon(
                                     _obscurePassword
-                                        ? Icons.visibility_outlined
+                                        ? Icons
+                                            .visibility_outlined
                                         : Icons
-                                              .visibility_off_outlined,
+                                            .visibility_off_outlined,
                                   ),
                                 ),
                               ),
@@ -396,18 +326,13 @@ Future<void> _login() async {
                               },
                             ),
                             Align(
-                              alignment: Alignment.centerRight,
+                              alignment:
+                                  Alignment.centerRight,
                               child: TextButton(
                                 onPressed: () {
-                                  ScaffoldMessenger.of(context)
-                                    ..hideCurrentSnackBar()
-                                    ..showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Recuperación de contraseña próximamente.',
-                                        ),
-                                      ),
-                                    );
+                                  _showMessage(
+                                    'Recuperación de contraseña próximamente.',
+                                  );
                                 },
                                 child: const Text(
                                   '¿Olvidaste tu contraseña?',
@@ -416,84 +341,41 @@ Future<void> _login() async {
                             ),
                             const SizedBox(height: 8),
                             ElevatedButton(
-                              onPressed: _isLoggingIn ? null : _login,
-                              child: _isLoggingIn
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  'Iniciar sesión',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                            ),
-                            const SizedBox(height: 20),
-                            const Row(
-                              children: [
-                                Expanded(child: Divider()),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  child: Text('o continúa con'),
-                                ),
-                                Expanded(child: Divider()),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context)
-                                  ..hideCurrentSnackBar()
-                                  ..showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Inicio con Google próximamente.',
-                                      ),
-                                    ),
-                                  );
-                              },
-                              icon: const Icon(
-                                Icons.g_mobiledata,
-                                size: 30,
-                              ),
-                              label: const Text(
-                                'Continuar con Google',
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: _stravaButtonDisabled
+                              onPressed: _isLoggingIn
                                   ? null
-                                  : _continueWithStrava,
-                              icon: _openingStrava ||
-                                      _stravaConnectionController
-                                          .isAuthorizing ||
-                                      _stravaConnectionController
-                                          .isChecking
+                                  : _login,
+                              child: _isLoggingIn
                                   ? const SizedBox(
                                       width: 20,
                                       height: 20,
                                       child:
                                           CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
+                                        strokeWidth: 2,
+                                      ),
                                     )
-                                  : const Icon(
-                                      Icons
-                                          .directions_bike_outlined,
+                                  : const Text(
+                                      'Iniciar sesión',
+                                      style:
+                                          TextStyle(
+                                        fontSize: 16,
+                                        fontWeight:
+                                            FontWeight
+                                                .bold,
+                                      ),
                                     ),
-                              label: Text(
-                                _stravaButtonLabel(),
-                              ),
                             ),
                             const SizedBox(height: 20),
+                            const Text(
+                              'Strava se conecta desde el perfil del atleta '
+                              'después de iniciar sesión.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             Row(
                               mainAxisAlignment:
                                   MainAxisAlignment.center,
@@ -503,18 +385,13 @@ Future<void> _login() async {
                                 ),
                                 TextButton(
                                   onPressed: () {
-                                    ScaffoldMessenger.of(context)
-                                      ..hideCurrentSnackBar()
-                                      ..showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Registro de usuario próximamente.',
-                                          ),
-                                        ),
-                                      );
+                                    _showMessage(
+                                      'Registro de usuario próximamente.',
+                                    );
                                   },
-                                  child:
-                                      const Text('Registrarse'),
+                                  child: const Text(
+                                    'Registrarse',
+                                  ),
                                 ),
                               ],
                             ),
