@@ -193,3 +193,25 @@ Cada nueva funcionalidad deberá incluir:
 - Session Revocation
 
 Status: ✅ Completed
+
+# reconectar el cel 
+Primero el cel debe esta en modo desarrollador, y despues el modo depurado USB debe estar activo
+
+en flutter se debe pegar ese comando
+cd mobile:
+
+1
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" devices
+
+2
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:5264 tcp:5264
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:5208 tcp:5208
+
+3
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse --list
+
+4
+flutter devices
+
+5
+flutter run
