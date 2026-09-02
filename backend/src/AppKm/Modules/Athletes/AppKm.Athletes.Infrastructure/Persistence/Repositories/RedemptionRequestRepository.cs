@@ -100,4 +100,20 @@ internal sealed class RedemptionRequestRepository
                 request.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<RedemptionRequest>> GetByMerchantAsync(
+        Guid merchantId,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.RedemptionRequests
+            .Where(request =>
+                request.MerchantId == merchantId)
+            .OrderByDescending(request =>
+                request.MerchantProposedAtUtc)
+            .ThenByDescending(request =>
+                request.CreatedAtUtc)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -62,6 +62,28 @@ class MerchantBackendApiService {
     );
   }
 
+  Future<List<MerchantLatestRedemption>>
+      getRedemptionHistory() async {
+    final response = await _apiClient.get(
+      ApiConfig.athletesUri(
+        '/api/v1/merchants/redemptions/history',
+      ),
+    );
+
+    final items = _decodeList(
+      response.statusCode,
+      response.bodyBytes,
+    );
+
+    return items
+        .map(
+          (item) => MerchantLatestRedemption.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+  }
+
   Future<MerchantRedemptionValidation> validateRedemption({
     required String code,
   }) async {
@@ -103,6 +125,62 @@ class MerchantBackendApiService {
         response.statusCode,
         response.bodyBytes,
       ),
+    );
+  }
+
+  List<dynamic> _decodeList(
+    int statusCode,
+    List<int> bodyBytes,
+  ) {
+    final body = utf8.decode(bodyBytes);
+
+    dynamic decoded;
+
+    if (body.trim().isNotEmpty) {
+      try {
+        decoded = jsonDecode(body);
+      } on FormatException {
+        if (statusCode >= 200 && statusCode < 300) {
+          throw const MerchantBackendApiException(
+            'La respuesta del servidor no es válida.',
+          );
+        }
+      }
+    }
+
+    if (statusCode >= 200 && statusCode < 300) {
+      if (decoded is List<dynamic>) {
+        return decoded;
+      }
+
+      throw const MerchantBackendApiException(
+        'La respuesta del servidor no tiene el formato esperado.',
+      );
+    }
+
+    var message =
+        'No fue posible cargar el historial de canjes.';
+    String? code;
+
+    if (decoded is Map<String, dynamic>) {
+      final serverMessage = decoded['message'];
+      final serverCode = decoded['code'];
+
+      if (serverMessage is String &&
+          serverMessage.trim().isNotEmpty) {
+        message = serverMessage;
+      }
+
+      if (serverCode is String &&
+          serverCode.trim().isNotEmpty) {
+        code = serverCode;
+      }
+    }
+
+    throw MerchantBackendApiException(
+      message,
+      statusCode: statusCode,
+      code: code,
     );
   }
 

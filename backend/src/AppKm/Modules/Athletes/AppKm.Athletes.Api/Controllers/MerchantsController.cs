@@ -3,6 +3,7 @@ using AppKm.Athletes.Api.Contracts;
 using AppKm.Athletes.Application.Commands.ProposeMerchantRedemption;
 using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Application.Queries.GetLatestMerchantRedemption;
+using AppKm.Athletes.Application.Queries.GetMerchantRedemptionHistory;
 using AppKm.Athletes.Application.Queries.GetMerchantProfile;
 using AppKm.Athletes.Application.Queries.ValidateMerchantRedemption;
 using Microsoft.AspNetCore.Authorization;
@@ -23,6 +24,8 @@ public sealed class MerchantsController : ControllerBase
         _proposeRedemptionHandler;
     private readonly GetLatestMerchantRedemptionQueryHandler
         _getLatestRedemptionHandler;
+    private readonly GetMerchantRedemptionHistoryQueryHandler
+        _getRedemptionHistoryHandler;
 
     public MerchantsController(
         GetMerchantProfileQueryHandler getMerchantProfileHandler,
@@ -43,6 +46,12 @@ public sealed class MerchantsController : ControllerBase
         // en el registro de DI de este Sprint.
         _getLatestRedemptionHandler =
             new GetLatestMerchantRedemptionQueryHandler(
+                merchantRepository,
+                redemptionRequestRepository,
+                athleteRepository);
+
+        _getRedemptionHistoryHandler =
+            new GetMerchantRedemptionHistoryQueryHandler(
                 merchantRepository,
                 redemptionRequestRepository,
                 athleteRepository);
@@ -122,6 +131,43 @@ public sealed class MerchantsController : ControllerBase
         if (result.Value is null)
         {
             return NoContent();
+        }
+
+        return Ok(result.Value);
+    }
+
+    [HttpGet("redemptions/history")]
+    public async Task<IActionResult> GetRedemptionHistory(
+        CancellationToken cancellationToken)
+    {
+        string? userIdValue =
+            User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out Guid userId))
+        {
+            return Unauthorized(new
+            {
+                code = "Authentication.InvalidUser",
+                message =
+                    "The authenticated user identifier is invalid."
+            });
+        }
+
+        var result =
+            await _getRedemptionHistoryHandler.HandleAsync(
+                userId,
+                cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(new
+            {
+                code = result.Error.Code,
+                message = result.Error.Message
+            });
         }
 
         return Ok(result.Value);

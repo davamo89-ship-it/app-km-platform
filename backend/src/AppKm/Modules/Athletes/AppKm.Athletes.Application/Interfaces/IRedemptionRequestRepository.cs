@@ -32,4 +32,9 @@ public interface IRedemptionRequestRepository
     Task<RedemptionRequest?> GetLatestByMerchantAsync(
         Guid merchantId,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RedemptionRequest>> GetByMerchantAsync(
+        Guid merchantId,
+        int limit,
+        CancellationToken cancellationToken);
 }

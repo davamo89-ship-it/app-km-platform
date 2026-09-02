@@ -10,6 +10,7 @@ import '../../services/api/authenticated_api_client.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/merchants/merchant_backend_api_service.dart';
+import 'merchant_redemptions_history_screen.dart';
 
 class MerchantScreen extends StatefulWidget {
   const MerchantScreen({super.key});
@@ -512,6 +513,18 @@ class _MerchantScreenState extends State<MerchantScreen> {
             onPressed:
                 _isLoadingProfile ? null : _refreshScreen,
             icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: 'Historial de canjes',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) =>
+                      const MerchantRedemptionsHistoryScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.history_rounded),
           ),
           IconButton(
             tooltip: 'Cerrar sesión',
@@ -1042,7 +1055,7 @@ class _ProposalSentCard extends StatelessWidget {
           const SizedBox(height: 5),
           const Text(
             'Los puntos todavía no se descuentan. '
-            'El atleta debe confirmar o rechazar.',
+            'El atleta debe confirmar o cancelar.',
             style: TextStyle(
               color: Colors.black54,
               fontSize: 12,
