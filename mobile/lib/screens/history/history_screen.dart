@@ -17,7 +17,12 @@ enum HistoryMovementType {
 }
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({
+    super.key,
+    this.onNavigateMainSection,
+  });
+
+  final ValueChanged<int>? onNavigateMainSection;
 
   @override
   State<HistoryScreen> createState() =>
@@ -231,8 +236,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _openRedemptions() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) =>
-            const RedemptionsScreen(),
+        builder: (context) => RedemptionsScreen(
+          onNavigateMainSection: widget.onNavigateMainSection,
+        ),
       ),
     );
 
@@ -246,19 +252,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Historial'),
-        centerTitle: false,
-        backgroundColor: AppColors.background,
-        surfaceTintColor: Colors.transparent,
-        actions: [
-          TextButton.icon(
-            onPressed: _openRedemptions,
-            icon: const Icon(
-              Icons.qr_code_2_rounded,
-              size: 20,
-            ),
-            label: const Text('Canjes'),
+        title: const Text(
+          'Historial',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
           ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
+        actions: [
           IconButton(
             tooltip: 'Información',
             onPressed: () {
@@ -288,6 +296,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             },
             icon: const Icon(
               Icons.info_outline_rounded,
+              color: AppColors.primary,
             ),
           ),
         ],
@@ -348,6 +357,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       children: [
         _BalanceCard(
           balance: _balance,
+        ),
+        const SizedBox(height: 14),
+        _RedemptionsEntryCard(
+          onPressed: _openRedemptions,
         ),
         const SizedBox(height: 22),
         const Text(
@@ -1383,4 +1396,71 @@ String _activityLabel(String value) {
   }
 
   return value;
+}
+
+class _RedemptionsEntryCard extends StatelessWidget {
+  const _RedemptionsEntryCard({
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.qr_code_2_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Canjes',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Consulta, crea y administra tus canjes.',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.primary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -21,8 +21,7 @@ internal sealed class RedemptionRequestRepository
     {
         return _dbContext.RedemptionRequests
             .FirstOrDefaultAsync(
-                request =>
-                    request.Code == code,
+                request => request.Code == code,
                 cancellationToken);
     }
 
@@ -32,8 +31,7 @@ internal sealed class RedemptionRequestRepository
     {
         return _dbContext.RedemptionRequests
             .AnyAsync(
-                request =>
-                    request.Code == code,
+                request => request.Code == code,
                 cancellationToken);
     }
 
@@ -51,10 +49,8 @@ internal sealed class RedemptionRequestRepository
         CancellationToken cancellationToken)
     {
         return await _dbContext.RedemptionRequests
-            .Where(request =>
-                request.AthleteId == athleteId)
-            .OrderByDescending(request =>
-                request.CreatedAtUtc)
+            .Where(request => request.AthleteId == athleteId)
+            .OrderByDescending(request => request.CreatedAtUtc)
             .ToListAsync(cancellationToken);
     }
 
@@ -66,8 +62,9 @@ internal sealed class RedemptionRequestRepository
         return _dbContext.RedemptionRequests
             .Where(request =>
                 request.AthleteId == athleteId &&
-                request.Status == RedemptionRequestStatus.Pending &&
-                request.ExpiresAtUtc > now)
+                request.ExpiresAtUtc > now &&
+                (request.Status == RedemptionRequestStatus.Pending ||
+                 request.Status == RedemptionRequestStatus.AwaitingAthleteConfirmation))
             .SumAsync(
                 request => request.RequestedPoints,
                 cancellationToken);
@@ -80,10 +77,8 @@ internal sealed class RedemptionRequestRepository
         return _dbContext.RedemptionRequests
             .Where(request =>
                 request.AthleteId == athleteId &&
-                request.Status ==
-                    RedemptionRequestStatus.AwaitingAthleteConfirmation)
-            .OrderByDescending(request =>
-                request.MerchantProposedAtUtc)
+                request.Status == RedemptionRequestStatus.AwaitingAthleteConfirmation)
+            .OrderByDescending(request => request.MerchantProposedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -92,12 +87,9 @@ internal sealed class RedemptionRequestRepository
         CancellationToken cancellationToken)
     {
         return _dbContext.RedemptionRequests
-            .Where(request =>
-                request.MerchantId == merchantId)
-            .OrderByDescending(request =>
-                request.MerchantProposedAtUtc)
-            .ThenByDescending(request =>
-                request.CreatedAtUtc)
+            .Where(request => request.MerchantId == merchantId)
+            .OrderByDescending(request => request.MerchantProposedAtUtc)
+            .ThenByDescending(request => request.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -107,12 +99,9 @@ internal sealed class RedemptionRequestRepository
         CancellationToken cancellationToken)
     {
         return await _dbContext.RedemptionRequests
-            .Where(request =>
-                request.MerchantId == merchantId)
-            .OrderByDescending(request =>
-                request.MerchantProposedAtUtc)
-            .ThenByDescending(request =>
-                request.CreatedAtUtc)
+            .Where(request => request.MerchantId == merchantId)
+            .OrderByDescending(request => request.MerchantProposedAtUtc)
+            .ThenByDescending(request => request.CreatedAtUtc)
             .Take(limit)
             .ToListAsync(cancellationToken);
     }

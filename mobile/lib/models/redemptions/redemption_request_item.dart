@@ -7,6 +7,8 @@ class RedemptionRequestItem {
     required this.createdAtUtc,
     required this.expiresAtUtc,
     this.completedAtUtc,
+    this.merchantId,
+    this.merchantName,
   });
 
   final String redemptionRequestId;
@@ -16,6 +18,8 @@ class RedemptionRequestItem {
   final DateTime createdAtUtc;
   final DateTime expiresAtUtc;
   final DateTime? completedAtUtc;
+  final String? merchantId;
+  final String? merchantName;
 
   factory RedemptionRequestItem.fromJson(
     Map<String, dynamic> json,
@@ -34,6 +38,8 @@ class RedemptionRequestItem {
       completedAtUtc: json['completedAtUtc'] == null
           ? null
           : DateTime.parse(json['completedAtUtc'] as String),
+      merchantId: json['merchantId'] as String?,
+      merchantName: json['merchantName'] as String?,
     );
   }
 

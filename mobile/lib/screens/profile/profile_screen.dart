@@ -464,10 +464,20 @@ class _ProfileScreenState extends State<ProfileScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Perfil'),
+        title: const Text(
+          'Perfil',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         centerTitle: false,
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

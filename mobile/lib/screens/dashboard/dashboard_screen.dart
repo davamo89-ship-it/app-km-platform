@@ -10,6 +10,7 @@ import '../../services/redemptions/pending_redemptions_backend_api_service.dart'
 import '../history/history_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../profile/profile_screen.dart';
+import '../redemptions/redemptions_screen.dart';
 import '../workouts/activity_screen.dart';
 import 'dashboard_controller.dart';
 import 'widgets/dashboard_header.dart';
@@ -20,7 +21,12 @@ import 'widgets/statistics_grid.dart';
 import 'widgets/strava_connection_card.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({
+    super.key,
+    this.initialIndex = 0,
+  });
+
+  final int initialIndex;
 
   @override
   State<DashboardScreen> createState() =>
@@ -30,7 +36,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState
     extends State<DashboardScreen>
     with WidgetsBindingObserver {
-  int _currentIndex = 0;
+  late int _currentIndex;
 
   int _unreadNotificationCount = 0;
   String? _currentNotificationSignature;
@@ -53,6 +59,12 @@ class _DashboardScreenState
   void initState() {
     super.initState();
 
+    _currentIndex = widget.initialIndex < 0
+        ? 0
+        : widget.initialIndex > 3
+            ? 3
+            : widget.initialIndex;
+
     WidgetsBinding.instance.addObserver(this);
 
     _pages = [
@@ -62,9 +74,12 @@ class _DashboardScreenState
             _openNotifications,
         unreadNotificationCount: () =>
             _unreadNotificationCount,
+        onOpenRedemptions: _openRedemptions,
       ),
       const ActivityScreen(),
-      const HistoryScreen(),
+      HistoryScreen(
+        onNavigateMainSection: _changePage,
+      ),
       const ProfileScreen(),
     ];
 
@@ -216,7 +231,9 @@ class _DashboardScreenState
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
-            const NotificationsScreen(),
+            NotificationsScreen(
+              onNavigateMainSection: _changePage,
+            ),
       ),
     );
 
@@ -230,6 +247,21 @@ class _DashboardScreenState
       await _homeDashboardKey.currentState
           ?.reloadAthlete();
     }
+  }
+
+  Future<void> _openRedemptions() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RedemptionsScreen(
+          onNavigateMainSection: _changePage,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadUnreadNotifications();
+    await _homeDashboardKey.currentState?.reloadAthlete();
   }
 
   void _changePage(int index) {
@@ -441,12 +473,14 @@ class HomeDashboard
     required this.onNotificationsPressed,
     required this
         .unreadNotificationCount,
+    required this.onOpenRedemptions,
   });
 
   final VoidCallback
       onNotificationsPressed;
   final int Function()
       unreadNotificationCount;
+  final VoidCallback onOpenRedemptions;
 
   @override
   State<HomeDashboard> createState() =>
@@ -671,6 +705,10 @@ class _HomeDashboardState
                           _controller
                               .isLoadingAthleteDashboard,
                     ),
+                    const SizedBox(height: 12),
+                    _DashboardRedemptionButton(
+                      onPressed: widget.onOpenRedemptions,
+                    ),
                     if ((_controller
                                 .athleteDashboard
                                 ?.pointsExpiringSoon ??
@@ -807,25 +845,115 @@ class _HomeDashboardState
                         height: 24),
                     const SectionTitle(
                       title:
-                          'Actividad reciente',
+                          'Actividad del último día sincronizado',
                       actionText:
                           'Ver todas',
                     ),
-                    const SizedBox(
-                        height: 12),
-                    RecentActivityCard(
-                      activity: _controller
-                          .athleteDashboard
-                          ?.lastActivity,
-                      isLoading:
-                          _controller
-                              .isLoadingAthleteDashboard,
-                    ),
+                    const SizedBox(height: 12),
+                    if (_controller.isLoadingAthleteDashboard)
+                      const RecentActivityCard(
+                        activity: null,
+                        isLoading: true,
+                      )
+                    else if ((_controller
+                                .athleteDashboard
+                                ?.latestDayActivities ??
+                            const [])
+                        .isEmpty)
+                      const RecentActivityCard(
+                        activity: null,
+                        isLoading: false,
+                      )
+                    else
+                      ..._controller
+                          .athleteDashboard!
+                          .latestDayActivities
+                          .map(
+                            (activity) => Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: 12,
+                              ),
+                              child: RecentActivityCard(
+                                activity: activity,
+                                isLoading: false,
+                              ),
+                            ),
+                          ),
                   ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardRedemptionButton extends StatelessWidget {
+  const _DashboardRedemptionButton({
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 16,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.qr_code_2_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Crear canje',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Genera un código para canjear tus puntos.',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.primary,
+              ),
+            ],
+          ),
         ),
       ),
     );

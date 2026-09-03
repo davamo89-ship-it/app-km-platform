@@ -7,4 +7,6 @@ public sealed record GetRedemptionRequestItem(
     string Status,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset ExpiresAtUtc,
-    DateTimeOffset? CompletedAtUtc);
+    DateTimeOffset? CompletedAtUtc,
+    Guid? MerchantId,
+    string? MerchantName);

@@ -30,74 +30,55 @@ public sealed class ConfirmAthleteRedemptionCommandHandler
         ConfirmAthleteRedemptionCommand command,
         CancellationToken cancellationToken)
     {
-        Athlete? athlete =
-            await _athleteRepository.GetByUserIdAsync(
-                command.UserId,
-                cancellationToken);
+        Athlete? athlete = await _athleteRepository.GetByUserIdAsync(
+            command.UserId,
+            cancellationToken);
 
         if (athlete is null)
-        {
             return Result<ConfirmAthleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Profile.NotFound",
-                    "The athlete profile was not found."));
+                new Error("Athletes.Profile.NotFound", "The athlete profile was not found."));
+
+        RedemptionRequest? request = await _redemptionRequestRepository.GetByCodeAsync(
+            command.Code.Trim(),
+            cancellationToken);
+
+        if (request is null || request.AthleteId != athlete.Id.Value)
+            return Result<ConfirmAthleteRedemptionResult>.Failure(
+                new Error("Athletes.Redemption.NotFound", "Redemption request was not found."));
+
+        if (request.Status != RedemptionRequestStatus.AwaitingAthleteConfirmation)
+            return Result<ConfirmAthleteRedemptionResult>.Failure(
+                new Error("Athletes.Redemption.NotAwaitingConfirmation", "The redemption request is not awaiting athlete confirmation."));
+
+        if (request.ProposedPoints is null || request.ProposedPoints <= 0)
+            return Result<ConfirmAthleteRedemptionResult>.Failure(
+                new Error("Athletes.Redemption.InvalidProposal", "The redemption proposal is invalid."));
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        if (now > request.ExpiresAtUtc)
+        {
+            request.Expire(now);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return Result<ConfirmAthleteRedemptionResult>.Failure(
+                new Error("Athletes.Redemption.Expired", "The redemption request has expired."));
         }
 
-        RedemptionRequest? request =
-            await _redemptionRequestRepository.GetByCodeAsync(
-                command.Code.Trim(),
-                cancellationToken);
-
-        if (request is null ||
-            request.AthleteId != athlete.Id.Value)
-        {
-            return Result<ConfirmAthleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.NotFound",
-                    "Redemption request was not found."));
-        }
-
-        if (request.Status !=
-            RedemptionRequestStatus.AwaitingAthleteConfirmation)
-        {
-            return Result<ConfirmAthleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.NotAwaitingConfirmation",
-                    "The redemption request is not awaiting athlete confirmation."));
-        }
-
-        if (request.ProposedPoints is null ||
-            request.ProposedPoints <= 0)
-        {
-            return Result<ConfirmAthleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.InvalidProposal",
-                    "The redemption proposal is invalid."));
-        }
-
-        DateTimeOffset now =
-            DateTimeOffset.UtcNow;
-
-        int balance =
-            await _pointTransactionRepository.GetBalanceAsync(
-                athlete.Id.Value,
-                cancellationToken);
+        int balance = await _pointTransactionRepository.GetBalanceAsync(
+            athlete.Id.Value,
+            cancellationToken);
 
         if (request.ProposedPoints.Value > balance)
-        {
             return Result<ConfirmAthleteRedemptionResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.InsufficientBalance",
-                    "The athlete does not have enough points."));
-        }
+                new Error("Athletes.Redemption.InsufficientBalance", "The athlete does not have enough points."));
 
         request.ConfirmByAthlete(now);
 
-        PointTransaction redeemed =
-            PointTransaction.CreateRedeemed(
-                athlete.Id.Value,
-                request.ProposedPoints.Value,
-                now);
+        PointTransaction redeemed = PointTransaction.CreateRedeemed(
+            athlete.Id.Value,
+            request.ProposedPoints.Value,
+            now);
 
         await _pointTransactionRepository.AddAsync(
             redeemed,
@@ -105,8 +86,7 @@ public sealed class ConfirmAthleteRedemptionCommandHandler
 
         request.Complete(now);
 
-        await _unitOfWork.SaveChangesAsync(
-            cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<ConfirmAthleteRedemptionResult>.Success(
             new ConfirmAthleteRedemptionResult(

@@ -93,6 +93,24 @@ public sealed class GetAthleteDashboardQueryHandler
                     latestActivity.Points,
                     latestActivity.StartDateUtc);
 
+        IReadOnlyList<DashboardActivityResult> latestDayActivities =
+            latestActivity is null
+                ? Array.Empty<DashboardActivityResult>()
+                : activities
+                    .Where(activity =>
+                        activity.StartDateLocal.Date ==
+                        latestActivity.StartDateLocal.Date)
+                    .OrderByDescending(activity =>
+                        activity.StartDateUtc)
+                    .Select(activity =>
+                        new DashboardActivityResult(
+                            activity.StravaActivityId,
+                            activity.ActivityType.ToString(),
+                            activity.DistanceKilometers,
+                            activity.Points,
+                            activity.StartDateUtc))
+                    .ToList();
+
         bool stravaConnected =
             stravaConnection is not null &&
             stravaConnection.Status ==
@@ -135,6 +153,7 @@ public sealed class GetAthleteDashboardQueryHandler
             stravaConnected,
             stravaConnection?.Status.ToString(),
             lastActivity,
+            latestDayActivities,
             pointsExpiringSoon,
             totalKilometers,
             approvedActivities,

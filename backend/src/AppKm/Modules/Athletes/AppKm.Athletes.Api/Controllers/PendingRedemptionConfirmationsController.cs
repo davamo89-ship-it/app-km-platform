@@ -9,22 +9,21 @@ namespace AppKm.Athletes.Api.Controllers;
 [ApiController]
 [Route("api/v1/athletes/redemptions")]
 [Authorize(Roles = "Athlete")]
-public sealed class PendingRedemptionConfirmationsController
-    : ControllerBase
+public sealed class PendingRedemptionConfirmationsController : ControllerBase
 {
-    private readonly GetPendingRedemptionConfirmationsQueryHandler
-        _handler;
+    private readonly GetPendingRedemptionConfirmationsQueryHandler _handler;
 
     public PendingRedemptionConfirmationsController(
         IAthleteRepository athleteRepository,
         IRedemptionRequestRepository redemptionRequestRepository,
-        IMerchantRepository merchantRepository)
+        IMerchantRepository merchantRepository,
+        IAthleteUnitOfWork unitOfWork)
     {
-        _handler =
-            new GetPendingRedemptionConfirmationsQueryHandler(
-                athleteRepository,
-                redemptionRequestRepository,
-                merchantRepository);
+        _handler = new GetPendingRedemptionConfirmationsQueryHandler(
+            athleteRepository,
+            redemptionRequestRepository,
+            merchantRepository,
+            unitOfWork);
     }
 
     [HttpGet("pending-confirmations")]
@@ -32,32 +31,21 @@ public sealed class PendingRedemptionConfirmationsController
         CancellationToken cancellationToken)
     {
         string? userIdValue =
-            User.FindFirst(
-                JwtRegisteredClaimNames.Sub)?.Value
+            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
             ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(
-                System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-        if (!Guid.TryParse(
-                userIdValue,
-                out Guid userId))
-        {
+        if (!Guid.TryParse(userIdValue, out Guid userId))
             return Unauthorized();
-        }
 
-        var result =
-            await _handler.HandleAsync(
-                userId,
-                cancellationToken);
+        var result = await _handler.HandleAsync(userId, cancellationToken);
 
         if (result.IsFailure)
-        {
             return BadRequest(new
             {
                 code = result.Error.Code,
                 message = result.Error.Message
             });
-        }
 
         return Ok(result.Value);
     }

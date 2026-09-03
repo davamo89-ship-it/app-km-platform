@@ -8,7 +8,12 @@ import '../../services/redemptions/pending_redemptions_backend_api_service.dart'
 import '../redemptions/pending_redemption_decision_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({
+    super.key,
+    this.onNavigateMainSection,
+  });
+
+  final ValueChanged<int>? onNavigateMainSection;
 
   @override
   State<NotificationsScreen> createState() =>
@@ -134,6 +139,7 @@ class _NotificationsScreenState
         builder: (_) =>
             PendingRedemptionDecisionScreen(
           pending: pending,
+          onNavigateMainSection: widget.onNavigateMainSection,
         ),
       ),
     );
@@ -187,14 +193,32 @@ class _NotificationsScreenState
       );
   }
 
+  void _goToMainSection(int index) {
+    final navigate = widget.onNavigateMainSection;
+    if (navigate == null) return;
+
+    Navigator.of(context).pop();
+    navigate(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Notificaciones'),
-        backgroundColor: AppColors.background,
+        title: const Text(
+          'Notificaciones',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
         actions: [
           IconButton(
             tooltip: 'Actualizar',
@@ -213,6 +237,34 @@ class _NotificationsScreenState
         ),
         child: _buildBody(),
       ),
+      bottomNavigationBar: widget.onNavigateMainSection == null
+          ? null
+          : NavigationBar(
+              selectedIndex: 0,
+              onDestinationSelected: _goToMainSection,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Inicio',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.directions_run_outlined),
+                  selectedIcon: Icon(Icons.directions_run),
+                  label: 'Actividad',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.history_outlined),
+                  selectedIcon: Icon(Icons.history),
+                  label: 'Historial',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'Perfil',
+                ),
+              ],
+            ),
     );
   }
 

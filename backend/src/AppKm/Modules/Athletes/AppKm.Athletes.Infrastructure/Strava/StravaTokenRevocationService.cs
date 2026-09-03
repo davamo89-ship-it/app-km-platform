@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using AppKm.Athletes.Application.Interfaces;
 using Microsoft.Extensions.Options;
@@ -26,10 +27,27 @@ internal sealed class StravaTokenRevocationService
         string protectedToken,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(protectedToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            protectedToken);
 
-        string token =
-            _tokenProtector.Unprotect(protectedToken);
+        string token;
+
+        try
+        {
+            token =
+                _tokenProtector.Unprotect(
+                    protectedToken);
+        }
+        catch (CryptographicException)
+        {
+            // El token local fue cifrado con una clave de
+            // Data Protection que ya no está disponible.
+            //
+            // No es posible revocarlo remotamente en Strava,
+            // pero esto no debe impedir que App KM complete
+            // la desconexión local.
+            return;
+        }
 
         string revokeEndpoint =
             $"{_options.OAuthBaseUrl.TrimEnd('/')}/revoke";

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -5,33 +7,43 @@ import '../../models/redemptions/create_redemption_result.dart';
 import '../../models/redemptions/pending_redemption_confirmation.dart';
 import '../../models/redemptions/redemption_request_item.dart';
 import '../../services/points/points_backend_api_service.dart';
+import '../../services/redemptions/pending_redemptions_backend_api_service.dart';
 import '../../services/redemptions/redemptions_backend_api_service.dart';
+import '../dashboard/dashboard_screen.dart';
 
 class RedemptionsScreen extends StatefulWidget {
-  const RedemptionsScreen({super.key});
+  const RedemptionsScreen({
+    super.key,
+    this.onNavigateMainSection,
+  });
+
+  final ValueChanged<int>? onNavigateMainSection;
 
   @override
   State<RedemptionsScreen> createState() =>
       _RedemptionsScreenState();
 }
 
-class _RedemptionsScreenState
-    extends State<RedemptionsScreen>
+class _RedemptionsScreenState extends State<RedemptionsScreen>
     with WidgetsBindingObserver {
   final RedemptionsBackendApiService _redemptionsApi =
       RedemptionsBackendApiService();
-
+  final PendingRedemptionsBackendApiService _pendingRedemptionsApi =
+      PendingRedemptionsBackendApiService();
   final PointsBackendApiService _pointsApi =
       PointsBackendApiService();
 
   int _balance = 0;
   List<RedemptionRequestItem> _requests = const [];
-  PendingRedemptionConfirmation? _pendingConfirmation;
+  List<PendingRedemptionConfirmation> _pendingConfirmations = const [];
 
   bool _isLoading = true;
   bool _isProcessing = false;
   bool _hasLoadedOnce = false;
   String? _errorMessage;
+  String? _noticeTitle;
+  String? _noticeMessage;
+  bool _noticeIsError = false;
 
   @override
   void initState() {
@@ -41,9 +53,7 @@ class _RedemptionsScreenState
   }
 
   @override
-  void didChangeAppLifecycleState(
-    AppLifecycleState state,
-  ) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !_isProcessing &&
         !_isLoading) {
@@ -55,6 +65,7 @@ class _RedemptionsScreenState
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _redemptionsApi.dispose();
+    _pendingRedemptionsApi.dispose();
     _pointsApi.dispose();
     super.dispose();
   }
@@ -81,7 +92,7 @@ class _RedemptionsScreenState
       final balanceFuture = _pointsApi.getBalance();
       final requestsFuture = _redemptionsApi.getAll();
       final pendingFuture =
-          _redemptionsApi.getPendingConfirmation();
+          _pendingRedemptionsApi.getPendingConfirmations();
 
       final balance = await balanceFuture;
       final requests = await requestsFuture;
@@ -90,20 +101,25 @@ class _RedemptionsScreenState
       requests.sort(
         (a, b) => b.createdAtUtc.compareTo(a.createdAtUtc),
       );
+      pending.sort(
+        (a, b) => b.merchantProposedAtUtc.compareTo(
+          a.merchantProposedAtUtc,
+        ),
+      );
 
       if (!mounted) return;
 
       setState(() {
         _balance = balance;
         _requests = requests;
-        _pendingConfirmation = pending;
+        _pendingConfirmations = pending;
         _isLoading = false;
         _hasLoadedOnce = true;
         _errorMessage = null;
       });
 
       if (showSuccessMessage) {
-        _showMessage('Canjes actualizados.');
+        _showSnackMessage('Canjes actualizados.');
       }
     } catch (error) {
       if (!mounted) return;
@@ -120,14 +136,43 @@ class _RedemptionsScreenState
 
       setState(() {
         _isLoading = false;
+        _noticeMessage =
+            '$friendlyMessage Se mantienen los últimos datos disponibles.';
+        _noticeIsError = true;
       });
-
-      _showMessage(
-        '$friendlyMessage '
-        'Se mantienen los últimos datos disponibles.',
-        isError: true,
-      );
     }
+  }
+
+  Future<void> _refreshFromUserAction({
+    bool showSuccessMessage = false,
+  }) async {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    setState(() {
+      _noticeTitle = null;
+      _noticeMessage = null;
+      _noticeIsError = false;
+    });
+
+    await _load(
+      showSuccessMessage: showSuccessMessage,
+    );
+  }
+
+  Future<void> _refreshExpiredState() async {
+    if (!mounted || _isProcessing || _isLoading) {
+      return;
+    }
+
+    await _load();
+  }
+
+  bool _isExpiredRedemptionError(Object error) {
+    return error is RedemptionsBackendApiException &&
+        (error.code == 'Athletes.Redemption.Expired' ||
+            error.code == 'Merchants.Redemption.Expired');
   }
 
   Future<void> _createRedemption() async {
@@ -148,6 +193,9 @@ class _RedemptionsScreenState
 
     setState(() {
       _isProcessing = true;
+      _noticeTitle = null;
+      _noticeMessage = null;
+      _noticeIsError = false;
     });
 
     try {
@@ -161,10 +209,12 @@ class _RedemptionsScreenState
       await _load();
     } catch (error) {
       if (!mounted) return;
-      _showMessage(
-        _friendlyError(error),
-        isError: true,
-      );
+
+      setState(() {
+        _noticeTitle = 'No pudimos crear el canje';
+        _noticeMessage = _friendlyError(error);
+        _noticeIsError = true;
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -196,8 +246,7 @@ class _RedemptionsScreenState
   ) async {
     final confirmed = await _confirmDialog(
       title: 'Cancelar canje',
-      message:
-          '¿Desea cancelar el código ${request.code}?',
+      message: '¿Deseas cancelar el código ${request.code}?',
       confirmText: 'Cancelar canje',
     );
 
@@ -213,16 +262,15 @@ class _RedemptionsScreenState
     );
   }
 
-  Future<void> _confirmMerchantProposal() async {
-    final pending = _pendingConfirmation;
-    if (pending == null) return;
-
+  Future<void> _confirmMerchantProposal(
+    PendingRedemptionConfirmation pending,
+  ) async {
     final confirmed = await _confirmDialog(
       title: 'Confirmar canje',
       message:
-          '${pending.merchantName} propone canjear '
+          '${pending.merchantName} solicita canjear '
           '${pending.proposedPoints} KM Points. '
-          'Al confirmar, el backend completará el canje.',
+          'Los puntos se descontarán al confirmar.',
       confirmText: 'Confirmar',
     );
 
@@ -238,18 +286,17 @@ class _RedemptionsScreenState
     );
   }
 
-  Future<void> _rejectMerchantProposal() async {
-    final pending = _pendingConfirmation;
-    if (pending == null) return;
-
+  Future<void> _rejectMerchantProposal(
+    PendingRedemptionConfirmation pending,
+  ) async {
     final confirmed = await _confirmDialog(
-      title: 'Cancelar',
+      title: 'Cancelar canje',
       message:
-          '¿Desea cancelar el canje en '
+          '¿Deseas cancelar el canje en '
           '${pending.merchantName} por '
           '${pending.proposedPoints} KM Points?',
-      confirmText: 'Sí',
-      cancelText: 'No',
+      confirmText: 'Sí, cancelar',
+      cancelText: 'Volver',
     );
 
     if (!confirmed) {
@@ -260,7 +307,7 @@ class _RedemptionsScreenState
       () => _redemptionsApi.reject(
         code: pending.code,
       ),
-      successMessage: 'Propuesta cancelada.',
+      successMessage: 'Canje cancelado.',
     );
   }
 
@@ -270,6 +317,9 @@ class _RedemptionsScreenState
   }) async {
     setState(() {
       _isProcessing = true;
+      _noticeTitle = null;
+      _noticeMessage = null;
+      _noticeIsError = false;
     });
 
     try {
@@ -277,15 +327,34 @@ class _RedemptionsScreenState
 
       if (!mounted) return;
 
-      _showMessage(successMessage);
       await _load();
+      _showSnackMessage(successMessage);
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage(
-        _friendlyError(error),
-        isError: true,
-      );
+      final expired = _isExpiredRedemptionError(error);
+
+      if (expired) {
+        // El backend convierte el canje a Expired al detectar
+        // el vencimiento. Volvemos a consultar inmediatamente
+        // para que desaparezca de pendientes y pase a historial.
+        await _load();
+
+        if (!mounted) return;
+
+        setState(() {
+          _noticeTitle = 'Código vencido';
+          _noticeMessage =
+              'Este código ya venció y fue movido al historial.';
+          _noticeIsError = true;
+        });
+      } else {
+        setState(() {
+          _noticeTitle = 'No pudimos completar la acción';
+          _noticeMessage = _friendlyError(error);
+          _noticeIsError = true;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -330,20 +399,34 @@ class _RedemptionsScreenState
 
   String _friendlyError(Object error) {
     if (error is RedemptionsBackendApiException) {
-      return error.message;
+      switch (error.code) {
+        case 'Athletes.Redemption.InsufficientAvailableBalance':
+          return 'No tienes suficientes puntos disponibles para crear un canje por esa cantidad.';
+        case 'Athletes.Redemption.InvalidPoints':
+          return 'Ingresa una cantidad válida de KM Points.';
+        case 'Athletes.Redemption.Expired':
+        case 'Merchants.Redemption.Expired':
+          return 'Este código de canje ya venció.';
+        case 'Athletes.Redemption.NotPending':
+        case 'Merchants.Redemption.NotPending':
+          return 'Este canje ya no está pendiente.';
+        default:
+          return 'No fue posible procesar el canje. Inténtalo nuevamente.';
+      }
+    }
+
+    if (error is PendingRedemptionsBackendApiException) {
+      return 'No fue posible consultar las confirmaciones pendientes.';
     }
 
     if (error is PointsBackendApiException) {
-      return error.message;
+      return 'No fue posible consultar tus KM Points en este momento.';
     }
 
     return 'No fue posible comunicarse con el servicio de canjes.';
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showSnackMessage(String message) {
     final messenger = ScaffoldMessenger.of(context);
 
     messenger
@@ -352,10 +435,8 @@ class _RedemptionsScreenState
         SnackBar(
           content: Row(
             children: [
-              Icon(
-                isError
-                    ? Icons.wifi_off_rounded
-                    : Icons.check_circle_outline_rounded,
+              const Icon(
+                Icons.check_circle_outline_rounded,
                 color: Colors.white,
               ),
               const SizedBox(width: 10),
@@ -365,11 +446,28 @@ class _RedemptionsScreenState
             ],
           ),
           behavior: SnackBarBehavior.floating,
-          duration: Duration(
-            seconds: isError ? 5 : 3,
-          ),
+          duration: const Duration(seconds: 3),
         ),
       );
+  }
+
+  void _goToMainSection(int index) {
+    final navigate = widget.onNavigateMainSection;
+
+    if (navigate != null) {
+      Navigator.of(context).pop();
+      navigate(index);
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => DashboardScreen(
+          initialIndex: index,
+        ),
+      ),
+      (route) => false,
+    );
   }
 
   @override
@@ -377,22 +475,37 @@ class _RedemptionsScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Canjes'),
-        backgroundColor: AppColors.background,
+        title: const Text(
+          'Canjes',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
         actions: [
           IconButton(
             tooltip: 'Actualizar',
-            onPressed:
-                _isProcessing ? null : () => _load(),
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _isProcessing
+                ? null
+                : () => _refreshFromUserAction(),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: AppColors.primary,
+            ),
           ),
         ],
       ),
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () => _load(
+            onRefresh: () => _refreshFromUserAction(
               showSuccessMessage: true,
             ),
             child: _buildBody(),
@@ -408,28 +521,39 @@ class _RedemptionsScreenState
             ),
         ],
       ),
-      floatingActionButton:
-          _isLoading || _errorMessage != null
-              ? null
-              : FloatingActionButton.extended(
-                  onPressed:
-                      _isProcessing
-                          ? null
-                          : _createRedemption,
-                  icon: const Icon(
-                    Icons.qr_code_2_rounded,
-                  ),
-                  label:
-                      const Text('Crear canje'),
-                ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        onDestinationSelected: _goToMainSection,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Inicio',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.directions_run_outlined),
+            selectedIcon: Icon(Icons.directions_run),
+            label: 'Actividad',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history),
+            label: 'Historial',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Perfil',
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildBody() {
     if (_isLoading) {
       return ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(top: 120),
         children: const [
           Center(
@@ -441,14 +565,8 @@ class _RedemptionsScreenState
 
     if (_errorMessage != null) {
       return ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-          20,
-          80,
-          20,
-          24,
-        ),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 80, 20, 24),
         children: [
           _ErrorCard(
             message: _errorMessage!,
@@ -458,65 +576,77 @@ class _RedemptionsScreenState
       );
     }
 
+    final now = DateTime.now();
+
     final activeRequests = _requests
         .where(
           (request) =>
-              !_isClosedRedemptionStatus(request.status),
+              request.status.toLowerCase() == 'pending' &&
+              request.expiresAtUtc.toLocal().isAfter(now),
         )
         .toList();
 
     final historyRequests = _requests
         .where(
           (request) =>
-              _isClosedRedemptionStatus(request.status),
+              _isClosedRedemptionStatus(request.status) ||
+              (request.status.toLowerCase() == 'pending' &&
+                  !request.expiresAtUtc.toLocal().isAfter(now)),
         )
         .toList();
 
-    final completedCount = _requests
-        .where(
-          (request) =>
-              request.status.toLowerCase() == 'completed',
-        )
-        .length;
+    final currentPending = _pendingConfirmations.isEmpty
+        ? null
+        : _pendingConfirmations.first;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        8,
-        20,
-        110,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
       children: [
-        const _CanjesIntro(),
-        const SizedBox(height: 16),
         _BalanceCard(balance: _balance),
-        const SizedBox(height: 14),
-        _CanjesSummary(
-          pendingDecision:
-              _pendingConfirmation == null ? 0 : 1,
-          activeCodes: activeRequests.length,
-          completed: completedCount,
+        const SizedBox(height: 12),
+        _CreateRedemptionButton(
+          onPressed: _isProcessing ? null : _createRedemption,
         ),
-        if (_pendingConfirmation != null) ...[
-          const SizedBox(height: 22),
-          const _SectionHeader(
-            title: 'Requiere su decisión',
-            subtitle:
-                'Revise el comercio y la cantidad antes de confirmar.',
+        if (_noticeMessage != null) ...[
+          const SizedBox(height: 14),
+          _NoticeCard(
+            title: _noticeTitle,
+            message: _noticeMessage!,
+            isError: _noticeIsError,
+            onDismiss: () {
+              setState(() {
+                _noticeTitle = null;
+                _noticeMessage = null;
+              });
+            },
+          ),
+        ],
+        if (currentPending != null) ...[
+          const SizedBox(height: 26),
+          _SectionHeader(
+            title: 'Confirmación pendiente',
+            subtitle: _pendingConfirmations.length == 1
+                ? 'Completa el canje confirmándolo o cancelándolo.'
+                : 'Tienes ${_pendingConfirmations.length} canjes por decidir. Al resolver uno, aparecerá el siguiente.',
           ),
           const SizedBox(height: 12),
           _PendingConfirmationCard(
-            pending: _pendingConfirmation!,
-            onConfirm: _confirmMerchantProposal,
-            onReject: _rejectMerchantProposal,
+            pending: currentPending,
+            position: 1,
+            total: _pendingConfirmations.length,
+            onConfirm: () =>
+                _confirmMerchantProposal(currentPending),
+            onReject: () =>
+                _rejectMerchantProposal(currentPending),
+            onExpired: _refreshExpiredState,
           ),
         ],
         const SizedBox(height: 26),
         const _SectionHeader(
           title: 'Códigos activos',
           subtitle:
-              'Muestre el código al comercio. El comercio no puede cambiar la cantidad solicitada.',
+              'Muestra el código al comercio. El comercio no puede cambiar la cantidad solicitada.',
         ),
         const SizedBox(height: 14),
         if (activeRequests.isEmpty)
@@ -524,13 +654,12 @@ class _RedemptionsScreenState
         else
           ...activeRequests.map(
             (request) => Padding(
-              padding:
-                  const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 12),
               child: _RedemptionCard(
                 request: request,
-                onCancel: request.isPending
-                    ? () => _cancel(request)
-                    : null,
+                showCountdown: true,
+                onCancel: () => _cancel(request),
+                onExpired: _refreshExpiredState,
               ),
             ),
           ),
@@ -538,7 +667,7 @@ class _RedemptionsScreenState
         const _SectionHeader(
           title: 'Historial',
           subtitle:
-              'Aquí quedan los canjes completados, rechazados, cancelados o vencidos.',
+              'Aquí quedan los canjes completados, cancelados o vencidos.',
         ),
         const SizedBox(height: 14),
         if (historyRequests.isEmpty)
@@ -546,10 +675,11 @@ class _RedemptionsScreenState
         else
           ...historyRequests.map(
             (request) => Padding(
-              padding:
-                  const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 12),
               child: _RedemptionCard(
                 request: request,
+                effectiveStatus:
+                    _effectiveStatus(request, now),
               ),
             ),
           ),
@@ -558,52 +688,58 @@ class _RedemptionsScreenState
   }
 }
 
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({required this.balance});
 
-class _CanjesIntro extends StatelessWidget {
-  const _CanjesIntro();
+  final int balance;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 20,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: Colors.black.withValues(alpha: 0.05),
         ),
       ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          Icon(
-            Icons.redeem_rounded,
-            color: AppColors.primary,
-            size: 30,
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              Icons.stars_rounded,
+              color: AppColors.primary,
+              size: 30,
+            ),
           ),
-          SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Centro de Canjes',
-                  style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 5),
-                Text(
-                  'Genere códigos, revise solicitudes pendientes '
-                  'y consulte el historial de sus KM Points.',
-                  style: TextStyle(
-                    color: Colors.black54,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 10),
+          const Text(
+            'Puntos disponibles',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$balance KM Points',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -612,110 +748,150 @@ class _CanjesIntro extends StatelessWidget {
   }
 }
 
-class _CanjesSummary extends StatelessWidget {
-  const _CanjesSummary({
-    required this.pendingDecision,
-    required this.activeCodes,
-    required this.completed,
-  });
+class _CreateRedemptionButton extends StatelessWidget {
+  const _CreateRedemptionButton({required this.onPressed});
 
-  final int pendingDecision;
-  final int activeCodes;
-  final int completed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryMetric(
-            value: '$pendingDecision',
-            label: 'Por decidir',
-            icon: Icons.notification_important_outlined,
-            emphasized: pendingDecision > 0,
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(24),
+        child: SizedBox(
+          width: double.infinity,
+          height: 100,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(17),
+                  ),
+                  child: const Icon(
+                    Icons.qr_code_2_rounded,
+                    color: AppColors.primary,
+                    size: 29,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Crear canje',
+                        style: TextStyle(
+                          color: AppColors.textDark,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Genera un código para canjear tus puntos.',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryMetric(
-            value: '$activeCodes',
-            label: 'Activos',
-            icon: Icons.qr_code_2_rounded,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryMetric(
-            value: '$completed',
-            label: 'Completados',
-            icon: Icons.check_circle_outline_rounded,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _SummaryMetric extends StatelessWidget {
-  const _SummaryMetric({
-    required this.value,
-    required this.label,
-    required this.icon,
-    this.emphasized = false,
+class _NoticeCard extends StatelessWidget {
+  const _NoticeCard({
+    required this.message,
+    required this.isError,
+    required this.onDismiss,
+    this.title,
   });
 
-  final String value;
-  final String label;
-  final IconData icon;
-  final bool emphasized;
+  final String? title;
+  final String message;
+  final bool isError;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    final foreground =
-        emphasized ? AppColors.primary : AppColors.textDark;
-    final background = emphasized
-        ? AppColors.primary.withValues(alpha: 0.10)
-        : Colors.white;
+    final color = isError ? Colors.red : AppColors.primary;
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 14,
-      ),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: background,
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: emphasized
-              ? AppColors.primary.withValues(alpha: 0.25)
-              : Colors.black.withValues(alpha: 0.05),
+          color: color.withValues(alpha: 0.30),
         ),
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            color: foreground,
-            size: 22,
-          ),
-          const SizedBox(height: 7),
-          Text(
-            value,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isError
+                  ? Icons.warning_amber_rounded
+                  : Icons.check_circle_outline_rounded,
+              color: color,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black54,
-              fontSize: 11,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title ??
+                      (isError
+                          ? 'No pudimos completar la acción'
+                          : 'Listo'),
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Cerrar',
+            onPressed: onDismiss,
+            icon: Icon(
+              Icons.close_rounded,
+              color: color,
+              size: 20,
             ),
           ),
         ],
@@ -742,7 +918,7 @@ class _SectionHeader extends StatelessWidget {
           title,
           style: const TextStyle(
             color: AppColors.textDark,
-            fontSize: 19,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -759,199 +935,153 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _BalanceCard extends StatelessWidget {
-  const _BalanceCard({
-    required this.balance,
-  });
-
-  final int balance;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(17),
-            ),
-            child: const Icon(
-              Icons.stars_rounded,
-              color: Colors.white,
-              size: 29,
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Puntos disponibles',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$balance KM Points',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PendingConfirmationCard
-    extends StatelessWidget {
+class _PendingConfirmationCard extends StatelessWidget {
   const _PendingConfirmationCard({
     required this.pending,
+    required this.position,
+    required this.total,
     required this.onConfirm,
     required this.onReject,
+    required this.onExpired,
   });
 
   final PendingRedemptionConfirmation pending;
+  final int position;
+  final int total;
   final VoidCallback onConfirm;
   final VoidCallback onReject;
+  final VoidCallback onExpired;
 
   @override
   Widget build(BuildContext context) {
+    const accent = Colors.orange;
+
     return Container(
-      padding: const EdgeInsets.all(19),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color:
-              AppColors.primary.withValues(alpha: 0.30),
-          width: 1.4,
+          color: accent.withValues(alpha: 0.25),
         ),
       ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primary
-                      .withValues(alpha: 0.12),
-                  borderRadius:
-                      BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.storefront_outlined,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 5, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Confirmación pendiente',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: const Icon(
+                            Icons.storefront_outlined,
+                            color: accent,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _StatusBadge(
+                            status: 'AwaitingAthleteConfirmation',
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'El canje no se completa hasta que usted decida.',
-                      style: TextStyle(
-                        color: Colors.black45,
-                        fontSize: 12,
+                    const SizedBox(height: 16),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                pending.code,
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.7,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${pending.proposedPoints} KM Points',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                pending.merchantName,
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        _CountdownPanel(
+                          expiresAtUtc: pending.expiresAtUtc,
+                          onExpired: onExpired,
+                        ),
+                      ],
+                    ),
+                    if (total > 1) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        'Solicitud $position de $total',
+                        style: const TextStyle(
+                          color: Colors.black45,
+                          fontSize: 12,
+                        ),
                       ),
+                    ],
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: onReject,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: accent,
+                              side: const BorderSide(color: accent),
+                            ),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: onConfirm,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: accent,
+                            ),
+                            child: const Text('Confirmar'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            pending.merchantName,
-            style: const TextStyle(
-              color: AppColors.textDark,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${pending.proposedPoints} KM Points',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'Código: ${pending.code}',
-            style: const TextStyle(
-              color: Colors.black54,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'Vence: ${_formatDateTime(pending.expiresAtUtc)}',
-            style: const TextStyle(
-              color: Colors.black45,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onReject,
-                  child: const Text('Cancelar'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: onConfirm,
-                  child: const Text('Confirmar'),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -960,18 +1090,25 @@ class _PendingConfirmationCard
 class _RedemptionCard extends StatelessWidget {
   const _RedemptionCard({
     required this.request,
+    this.showCountdown = false,
+    this.effectiveStatus,
     this.onCancel,
+    this.onExpired,
   });
 
   final RedemptionRequestItem request;
+  final bool showCountdown;
+  final String? effectiveStatus;
   final VoidCallback? onCancel;
+  final VoidCallback? onExpired;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _statusColor(request.status);
+    final status = effectiveStatus ?? request.status;
+    final statusColor = _statusColor(status);
 
     return Container(
-      padding: const EdgeInsets.all(17),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -979,91 +1116,336 @@ class _RedemptionCard extends StatelessWidget {
           color: Colors.black.withValues(alpha: 0.05),
         ),
       ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color:
-                      statusColor.withValues(alpha: 0.10),
-                  borderRadius:
-                      BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  Icons.qr_code_2_rounded,
-                  color: statusColor,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 5,
+              color: statusColor,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(17),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      request.code,
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.6,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            _statusIcon(status),
+                            color: statusColor,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _StatusBadge(status: status),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${request.requestedPoints} KM Points',
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontSize: 13,
+                    const SizedBox(height: 15),
+                    if (showCountdown)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  request.code,
+                                  style: const TextStyle(
+                                    color: AppColors.textDark,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.7,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${request.requestedPoints} KM Points',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _CountdownPanel(
+                            expiresAtUtc: request.expiresAtUtc,
+                            onExpired: onExpired,
+                          ),
+                        ],
+                      )
+                    else ...[
+                      Text(
+                        request.code,
+                        style: const TextStyle(
+                          color: AppColors.textDark,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.6,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${request.requestedPoints} KM Points',
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (request.merchantName != null &&
+                          request.merchantName!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _InfoRow(
+                          icon: Icons.storefront_outlined,
+                          text: 'Comercio: ${request.merchantName}',
+                        ),
+                      ],
+                      const SizedBox(height: 15),
+                      _InfoRow(
+                        icon: Icons.calendar_today_outlined,
+                        text:
+                            'Creado: ${_formatDateTime(request.createdAtUtc)}',
+                      ),
+                      const SizedBox(height: 7),
+                      _InfoRow(
+                        icon: Icons.timer_outlined,
+                        text:
+                            'Vence: ${_formatDateTime(request.expiresAtUtc)}',
+                      ),
+                      if (request.completedAtUtc != null) ...[
+                        const SizedBox(height: 7),
+                        _InfoRow(
+                          icon: Icons.check_circle_outline,
+                          text:
+                              'Completado: ${_formatDateTime(request.completedAtUtc!)}',
+                        ),
+                      ],
+                    ],
+                    if (onCancel != null) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: onCancel,
+                          icon: const Icon(Icons.close_rounded),
+                          label: const Text('Cancelar código'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              _StatusBadge(
-                status: request.status,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountdownPanel extends StatelessWidget {
+  const _CountdownPanel({
+    required this.expiresAtUtc,
+    this.onExpired,
+  });
+
+  final DateTime expiresAtUtc;
+  final VoidCallback? onExpired;
+
+  @override
+  Widget build(BuildContext context) {
+    return _CountdownTimer(
+      expiresAtUtc: expiresAtUtc,
+      onExpired: onExpired,
+    );
+  }
+}
+
+class _CountdownTimer extends StatefulWidget {
+  const _CountdownTimer({
+    required this.expiresAtUtc,
+    this.onExpired,
+  });
+
+  final DateTime expiresAtUtc;
+  final VoidCallback? onExpired;
+
+  @override
+  State<_CountdownTimer> createState() =>
+      _CountdownTimerState();
+}
+
+class _CountdownTimerState extends State<_CountdownTimer> {
+  Timer? _timer;
+  late Duration _remaining;
+  bool _expirationNotified = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _remaining = _calculateRemaining();
+
+    if (_remaining == Duration.zero) {
+      _notifyExpiration();
+    } else {
+      _timer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) {
+          if (!mounted) return;
+
+          final remaining = _calculateRemaining();
+
+          setState(() {
+            _remaining = remaining;
+          });
+
+          if (remaining == Duration.zero) {
+            _timer?.cancel();
+            _notifyExpiration();
+          }
+        },
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _CountdownTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expiresAtUtc != widget.expiresAtUtc) {
+      _timer?.cancel();
+      _expirationNotified = false;
+      _remaining = _calculateRemaining();
+
+      if (_remaining == Duration.zero) {
+        _notifyExpiration();
+      } else {
+        _timer = Timer.periodic(
+          const Duration(seconds: 1),
+          (_) {
+            if (!mounted) return;
+
+            final remaining = _calculateRemaining();
+
+            setState(() {
+              _remaining = remaining;
+            });
+
+            if (remaining == Duration.zero) {
+              _timer?.cancel();
+              _notifyExpiration();
+            }
+          },
+        );
+      }
+    }
+  }
+
+  void _notifyExpiration() {
+    if (_expirationNotified) {
+      return;
+    }
+
+    _expirationNotified = true;
+
+    final callback = widget.onExpired;
+    if (callback == null) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        callback();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Duration _calculateRemaining() {
+    final difference = widget.expiresAtUtc.toUtc().difference(
+          DateTime.now().toUtc(),
+        );
+
+    if (difference.isNegative || difference == Duration.zero) {
+      return Duration.zero;
+    }
+
+    return difference;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalSeconds = _remaining.inSeconds;
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    final expired = totalSeconds <= 0;
+    final color = expired ? Colors.red : Colors.orange;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 112),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.schedule_rounded,
+                color: color,
+                size: 16,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                expired ? 'Vencido' : 'Tiempo restante',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 15),
-          _InfoRow(
-            icon: Icons.calendar_today_outlined,
-            text:
-                'Creado: ${_formatDateTime(request.createdAtUtc)}',
-          ),
-          const SizedBox(height: 7),
-          _InfoRow(
-            icon: Icons.timer_outlined,
-            text:
-                'Vence: ${_formatDateTime(request.expiresAtUtc)}',
-          ),
-          if (request.completedAtUtc != null) ...[
-            const SizedBox(height: 7),
-            _InfoRow(
-              icon: Icons.check_circle_outline,
-              text:
-                  'Completado: ${_formatDateTime(request.completedAtUtc!)}',
+          const SizedBox(height: 5),
+          Text(
+            '$minutes:$seconds',
+            style: TextStyle(
+              color: color,
+              fontSize: 23,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.4,
             ),
-          ],
-          if (onCancel != null) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onCancel,
-                icon: const Icon(
-                  Icons.close_rounded,
-                ),
-                label:
-                    const Text('Cancelar código'),
+          ),
+          if (!expired)
+            const Text(
+              'min : seg',
+              style: TextStyle(
+                color: Colors.black45,
+                fontSize: 9,
               ),
             ),
-          ],
         ],
       ),
     );
@@ -1071,9 +1453,7 @@ class _RedemptionCard extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({
-    required this.status,
-  });
+  const _StatusBadge({required this.status});
 
   final String status;
 
@@ -1081,21 +1461,38 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _statusColor(status);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        _statusLabel(status),
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _statusIcon(status),
+              color: color,
+              size: 14,
+            ),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                _statusLabel(status),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1135,8 +1532,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _CreateRedemptionSheet
-    extends StatefulWidget {
+class _CreateRedemptionSheet extends StatefulWidget {
   const _CreateRedemptionSheet({
     required this.balance,
   });
@@ -1148,8 +1544,7 @@ class _CreateRedemptionSheet
       _CreateRedemptionSheetState();
 }
 
-class _CreateRedemptionSheetState
-    extends State<_CreateRedemptionSheet> {
+class _CreateRedemptionSheetState extends State<_CreateRedemptionSheet> {
   final TextEditingController _controller =
       TextEditingController();
 
@@ -1162,13 +1557,11 @@ class _CreateRedemptionSheetState
   }
 
   void _submit() {
-    final points =
-        int.tryParse(_controller.text.trim());
+    final points = int.tryParse(_controller.text.trim());
 
     if (points == null || points <= 0) {
       setState(() {
-        _errorText =
-            'Ingrese una cantidad válida de puntos.';
+        _errorText = 'Ingresa una cantidad válida de puntos.';
       });
       return;
     }
@@ -1176,7 +1569,7 @@ class _CreateRedemptionSheetState
     if (points > widget.balance) {
       setState(() {
         _errorText =
-            'No puede solicitar más puntos que su saldo disponible.';
+            'No puedes solicitar más puntos que tu saldo actual.';
       });
       return;
     }
@@ -1186,8 +1579,7 @@ class _CreateRedemptionSheetState
 
   @override
   Widget build(BuildContext context) {
-    final bottom =
-        MediaQuery.viewInsetsOf(context).bottom;
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1206,8 +1598,7 @@ class _CreateRedemptionSheetState
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
@@ -1215,8 +1606,7 @@ class _CreateRedemptionSheetState
                 height: 5,
                 decoration: BoxDecoration(
                   color: Colors.black12,
-                  borderRadius:
-                      BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20),
                 ),
               ),
             ),
@@ -1231,7 +1621,7 @@ class _CreateRedemptionSheetState
             ),
             const SizedBox(height: 7),
             Text(
-              'Saldo disponible: ${widget.balance} KM Points',
+              'Saldo actual: ${widget.balance} KM Points',
               style: const TextStyle(
                 color: Colors.black54,
               ),
@@ -1245,11 +1635,9 @@ class _CreateRedemptionSheetState
                 labelText: 'Puntos a solicitar',
                 hintText: 'Ej. 500',
                 errorText: _errorText,
-                prefixIcon:
-                    const Icon(Icons.stars_outlined),
+                prefixIcon: const Icon(Icons.stars_outlined),
                 border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
               onSubmitted: (_) => _submit(),
@@ -1259,11 +1647,8 @@ class _CreateRedemptionSheetState
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: _submit,
-                icon: const Icon(
-                  Icons.qr_code_2_rounded,
-                ),
-                label:
-                    const Text('Generar código'),
+                icon: const Icon(Icons.qr_code_2_rounded),
+                label: const Text('Generar código'),
               ),
             ),
           ],
@@ -1273,8 +1658,7 @@ class _CreateRedemptionSheetState
   }
 }
 
-class _CreatedCodeSheet
-    extends StatelessWidget {
+class _CreatedCodeSheet extends StatelessWidget {
   const _CreatedCodeSheet({
     required this.result,
   });
@@ -1284,12 +1668,7 @@ class _CreatedCodeSheet
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-        24,
-        14,
-        24,
-        28,
-      ),
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 28),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(
@@ -1306,8 +1685,7 @@ class _CreatedCodeSheet
               height: 5,
               decoration: BoxDecoration(
                 color: Colors.black12,
-                borderRadius:
-                    BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
             ),
             const SizedBox(height: 24),
@@ -1315,10 +1693,8 @@ class _CreatedCodeSheet
               width: 128,
               height: 128,
               decoration: BoxDecoration(
-                color: AppColors.primary
-                    .withValues(alpha: 0.08),
-                borderRadius:
-                    BorderRadius.circular(24),
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(24),
               ),
               child: const Icon(
                 Icons.qr_code_2_rounded,
@@ -1328,7 +1704,7 @@ class _CreatedCodeSheet
             ),
             const SizedBox(height: 20),
             const Text(
-              'Muestre este código al comercio',
+              'Muestra este código al comercio',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textDark,
@@ -1355,20 +1731,13 @@ class _CreatedCodeSheet
                 fontSize: 15,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Expira: ${_formatDateTime(result.expiresAtUtc)}',
-              style: const TextStyle(
-                color: Colors.black45,
-                fontSize: 13,
-              ),
+            const SizedBox(height: 14),
+            _CountdownTimer(
+              expiresAtUtc: result.expiresAtUtc,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             const Text(
-              'El comercio utilizará este código para solicitar '
-              'el canje exacto de estos puntos. El comercio no '
-              'puede cambiar la cantidad. Después usted deberá '
-              'confirmar o cancelar el canje.',
+              'El comercio usará este código para solicitar el canje exacto. Después deberás confirmarlo o cancelarlo.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black54,
@@ -1401,7 +1770,7 @@ class _EmptyActiveRedemptions extends StatelessWidget {
       icon: Icons.qr_code_2_rounded,
       title: 'No hay códigos activos',
       message:
-          'Cuando genere un nuevo código de canje, aparecerá aquí.',
+          'Cuando generes un nuevo código de canje, aparecerá aquí.',
     );
   }
 }
@@ -1502,7 +1871,7 @@ class _ErrorCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'No pudimos cargar sus canjes',
+            'No pudimos cargar tus canjes',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.textDark,
@@ -1543,6 +1912,18 @@ bool _isClosedRedemptionStatus(String status) {
   }
 }
 
+String _effectiveStatus(
+  RedemptionRequestItem request,
+  DateTime now,
+) {
+  if (request.status.toLowerCase() == 'pending' &&
+      !request.expiresAtUtc.toLocal().isAfter(now)) {
+    return 'Expired';
+  }
+
+  return request.status;
+}
+
 Color _statusColor(String status) {
   switch (status.toLowerCase()) {
     case 'pending':
@@ -1553,15 +1934,35 @@ Color _statusColor(String status) {
       return Colors.red;
     case 'cancelled':
     case 'canceled':
+    case 'rejected':
       return Colors.blueGrey;
     case 'merchantproposed':
     case 'pendingathleteconfirmation':
     case 'awaitingathleteconfirmation':
       return Colors.orange;
-    case 'rejected':
-      return Colors.redAccent;
     default:
       return AppColors.primary;
+  }
+}
+
+IconData _statusIcon(String status) {
+  switch (status.toLowerCase()) {
+    case 'pending':
+      return Icons.schedule_rounded;
+    case 'completed':
+      return Icons.check_circle_outline_rounded;
+    case 'expired':
+      return Icons.timer_off_outlined;
+    case 'cancelled':
+    case 'canceled':
+    case 'rejected':
+      return Icons.cancel_outlined;
+    case 'merchantproposed':
+    case 'pendingathleteconfirmation':
+    case 'awaitingathleteconfirmation':
+      return Icons.schedule_rounded;
+    default:
+      return Icons.qr_code_2_rounded;
   }
 }
 
@@ -1575,19 +1976,14 @@ String _statusLabel(String status) {
       return 'Vencido';
     case 'cancelled':
     case 'canceled':
+    case 'rejected':
       return 'Cancelado';
     case 'merchantproposed':
     case 'pendingathleteconfirmation':
     case 'awaitingathleteconfirmation':
       return 'Pendiente de tu confirmación';
-    case 'rejected':
-      return 'Rechazado';
     default:
-      if (status.isEmpty) {
-        return 'Sin estado';
-      }
-
-      return status;
+      return status.isEmpty ? 'Sin estado' : status;
   }
 }
 
@@ -1595,13 +1991,10 @@ String _formatDateTime(DateTime value) {
   final local = value.toLocal();
 
   final day = local.day.toString().padLeft(2, '0');
-  final month =
-      local.month.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
   final year = local.year.toString();
-
   final hour = local.hour.toString().padLeft(2, '0');
-  final minute =
-      local.minute.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
 
   return '$day/$month/$year $hour:$minute';
 }

@@ -546,7 +546,19 @@ class _ActivityScreenState extends State<ActivityScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Mis actividades'),
+        title: const Text(
+          'Mis actividades',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
         actions: [
           IconButton(
             tooltip: _isConnected
@@ -563,7 +575,10 @@ class _ActivityScreenState extends State<ActivityScreen>
                       strokeWidth: 2,
                     ),
                   )
-                : const Icon(Icons.sync_rounded),
+                : const Icon(
+                    Icons.sync_rounded,
+                    color: AppColors.primary,
+                  ),
           ),
         ],
       ),

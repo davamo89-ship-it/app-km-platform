@@ -12,96 +12,88 @@ public sealed class GetPendingRedemptionConfirmationsQueryHandler
     private readonly IAthleteRepository _athleteRepository;
     private readonly IRedemptionRequestRepository _redemptionRequestRepository;
     private readonly IMerchantRepository _merchantRepository;
+    private readonly IAthleteUnitOfWork _unitOfWork;
 
     public GetPendingRedemptionConfirmationsQueryHandler(
         IAthleteRepository athleteRepository,
         IRedemptionRequestRepository redemptionRequestRepository,
-        IMerchantRepository merchantRepository)
+        IMerchantRepository merchantRepository,
+        IAthleteUnitOfWork unitOfWork)
     {
         _athleteRepository = athleteRepository;
         _redemptionRequestRepository = redemptionRequestRepository;
         _merchantRepository = merchantRepository;
+        _unitOfWork = unitOfWork;
     }
 
-    public async Task<Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>>
-        HandleAsync(
-            Guid userId,
-            CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>> HandleAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
     {
-        Athlete? athlete =
-            await _athleteRepository.GetByUserIdAsync(
-                userId,
-                cancellationToken);
+        Athlete? athlete = await _athleteRepository.GetByUserIdAsync(
+            userId,
+            cancellationToken);
 
         if (athlete is null)
-        {
             return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Failure(
-                new Error(
-                    "Athletes.Profile.NotFound",
-                    "The athlete profile was not found."));
-        }
+                new Error("Athletes.Profile.NotFound", "The athlete profile was not found."));
 
-        IReadOnlyList<RedemptionRequest> requests =
-            await _redemptionRequestRepository.GetByAthleteAsync(
-                athlete.Id.Value,
-                cancellationToken);
+        IReadOnlyList<RedemptionRequest> requests = await _redemptionRequestRepository.GetByAthleteAsync(
+            athlete.Id.Value,
+            cancellationToken);
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        var expiredRequests = requests
+            .Where(request =>
+                request.Status == RedemptionRequestStatus.AwaitingAthleteConfirmation &&
+                now > request.ExpiresAtUtc)
+            .ToList();
+
+        foreach (RedemptionRequest expiredRequest in expiredRequests)
+            expiredRequest.Expire(now);
+
+        if (expiredRequests.Count > 0)
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var pendingRequests = requests
             .Where(request =>
-                request.Status ==
-                    RedemptionRequestStatus.AwaitingAthleteConfirmation)
-            .OrderByDescending(request =>
-                request.MerchantProposedAtUtc)
+                request.Status == RedemptionRequestStatus.AwaitingAthleteConfirmation &&
+                request.ExpiresAtUtc > now)
+            .OrderByDescending(request => request.MerchantProposedAtUtc)
             .ToList();
 
         if (pendingRequests.Count == 0)
-        {
             return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Success(
                 Array.Empty<GetPendingRedemptionConfirmationsResult>());
-        }
 
-        var results =
-            new List<GetPendingRedemptionConfirmationsResult>(
-                pendingRequests.Count);
+        var results = new List<GetPendingRedemptionConfirmationsResult>(pendingRequests.Count);
 
         foreach (RedemptionRequest request in pendingRequests)
         {
-            if (request.MerchantId is null ||
-                request.ProposedPoints is null ||
-                request.MerchantProposedAtUtc is null)
-            {
+            if (request.MerchantId is null || request.ProposedPoints is null || request.MerchantProposedAtUtc is null)
                 return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Failure(
-                    new Error(
-                        "Athletes.Redemption.InvalidProposal",
-                        "A redemption proposal is incomplete."));
-            }
+                    new Error("Athletes.Redemption.InvalidProposal", "A redemption proposal is incomplete."));
 
-            Merchant? merchant =
-                await _merchantRepository.GetByIdAsync(
-                    new MerchantId(request.MerchantId.Value),
-                    cancellationToken);
+            Merchant? merchant = await _merchantRepository.GetByIdAsync(
+                new MerchantId(request.MerchantId.Value),
+                cancellationToken);
 
             if (merchant is null)
-            {
                 return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Failure(
-                    new Error(
-                        "Merchants.Profile.NotFound",
-                        "A merchant profile was not found."));
-            }
+                    new Error("Merchants.Profile.NotFound", "A merchant profile was not found."));
 
-            results.Add(
-                new GetPendingRedemptionConfirmationsResult(
-                    request.Id.Value,
-                    request.Code,
-                    merchant.Id.Value,
-                    merchant.BusinessName,
-                    request.ProposedPoints.Value,
-                    request.Status.ToString(),
-                    request.MerchantProposedAtUtc.Value,
-                    request.ExpiresAtUtc));
+            results.Add(new GetPendingRedemptionConfirmationsResult(
+                request.Id.Value,
+                request.Code,
+                merchant.Id.Value,
+                merchant.BusinessName,
+                request.ProposedPoints.Value,
+                request.Status.ToString(),
+                request.MerchantProposedAtUtc.Value,
+                request.ExpiresAtUtc));
         }
 
-        return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Success(
-            results);
+        return Result<IReadOnlyList<GetPendingRedemptionConfirmationsResult>>.Success(results);
     }
 }

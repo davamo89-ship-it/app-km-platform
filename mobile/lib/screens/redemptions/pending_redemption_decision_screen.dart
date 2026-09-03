@@ -9,9 +9,11 @@ class PendingRedemptionDecisionScreen
   const PendingRedemptionDecisionScreen({
     super.key,
     required this.pending,
+    this.onNavigateMainSection,
   });
 
   final PendingRedemptionConfirmation pending;
+  final ValueChanged<int>? onNavigateMainSection;
 
   @override
   State<PendingRedemptionDecisionScreen> createState() =>
@@ -167,6 +169,14 @@ class _PendingRedemptionDecisionScreenState
     }
   }
 
+  void _goToMainSection(int index) {
+    final navigate = widget.onNavigateMainSection;
+    if (navigate == null) return;
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    navigate(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = widget.pending;
@@ -174,9 +184,19 @@ class _PendingRedemptionDecisionScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Revisar canje'),
-        backgroundColor: AppColors.background,
+        title: const Text(
+          'Revisar canje',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -270,6 +290,34 @@ class _PendingRedemptionDecisionScreenState
           ),
         ],
       ),
+      bottomNavigationBar: widget.onNavigateMainSection == null
+          ? null
+          : NavigationBar(
+              selectedIndex: 0,
+              onDestinationSelected: _goToMainSection,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Inicio',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.directions_run_outlined),
+                  selectedIcon: Icon(Icons.directions_run),
+                  label: 'Actividad',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.history_outlined),
+                  selectedIcon: Icon(Icons.history),
+                  label: 'Historial',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'Perfil',
+                ),
+              ],
+            ),
     );
   }
 }

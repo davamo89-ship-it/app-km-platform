@@ -17,18 +17,13 @@ class DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(30),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.black.withValues(alpha: 0.05),
+          ),
         ),
       ),
       child: Row(
@@ -37,15 +32,15 @@ class DashboardHeader extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
+              color: AppColors.primary.withValues(alpha: 0.10),
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35),
+                color: AppColors.primary.withValues(alpha: 0.18),
               ),
             ),
             child: const Icon(
               Icons.person,
-              color: Colors.white,
+              color: AppColors.primary,
               size: 30,
             ),
           ),
@@ -59,7 +54,7 @@ class DashboardHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textDark,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -68,7 +63,7 @@ class DashboardHeader extends StatelessWidget {
                 const Text(
                   'Sigue sumando kilómetros',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: Colors.black54,
                     fontSize: 14,
                   ),
                 ),
@@ -102,13 +97,14 @@ class _NotificationBell extends StatelessWidget {
           : 'Notificaciones',
       onPressed: onPressed,
       style: IconButton.styleFrom(
-        backgroundColor: Colors.white.withValues(alpha: 0.16),
+        foregroundColor: AppColors.primary,
+        backgroundColor: AppColors.primary.withValues(alpha: 0.10),
       ),
       icon: Icon(
         unreadCount > 0
             ? Icons.notifications_rounded
             : Icons.notifications_none_rounded,
-        color: Colors.white,
+        color: AppColors.primary,
       ),
     );
 

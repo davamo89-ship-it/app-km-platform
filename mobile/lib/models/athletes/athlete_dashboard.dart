@@ -7,6 +7,7 @@ class AthleteDashboard {
     required this.stravaConnected,
     required this.stravaStatus,
     required this.lastActivity,
+    required this.latestDayActivities,
     required this.pointsExpiringSoon,
     required this.totalKilometers,
     required this.approvedActivities,
@@ -21,13 +22,17 @@ class AthleteDashboard {
   final bool stravaConnected;
   final String? stravaStatus;
   final DashboardActivity? lastActivity;
+  final List<DashboardActivity> latestDayActivities;
   final int pointsExpiringSoon;
   final double totalKilometers;
-final int approvedActivities;
-final int currentStreakDays;
-final double monthlyKilometers;
+  final int approvedActivities;
+  final int currentStreakDays;
+  final double monthlyKilometers;
 
   factory AthleteDashboard.fromJson(Map<String, dynamic> json) {
+    final latestDayJson =
+        json['latestDayActivities'] as List<dynamic>? ?? const [];
+
     return AthleteDashboard(
       athleteId: json['athleteId'] as String,
       displayName: json['displayName'] as String,
@@ -40,15 +45,20 @@ final double monthlyKilometers;
           : DashboardActivity.fromJson(
               json['lastActivity'] as Map<String, dynamic>,
             ),
+      latestDayActivities: latestDayJson
+          .map(
+            (item) => DashboardActivity.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
       pointsExpiringSoon: json['pointsExpiringSoon'] as int,
       totalKilometers:
-        (json['totalKilometers'] as num).toDouble(),
-      approvedActivities:
-            json['approvedActivities'] as int,
-      currentStreakDays:
-            json['currentStreakDays'] as int,
+          (json['totalKilometers'] as num).toDouble(),
+      approvedActivities: json['approvedActivities'] as int,
+      currentStreakDays: json['currentStreakDays'] as int,
       monthlyKilometers:
-            (json['monthlyKilometers'] as num).toDouble(),
+          (json['monthlyKilometers'] as num).toDouble(),
     );
   }
 }
