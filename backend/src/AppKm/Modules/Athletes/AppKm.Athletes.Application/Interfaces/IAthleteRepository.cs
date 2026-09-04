@@ -16,6 +16,9 @@ public interface IAthleteRepository
         Guid userId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Athlete>> GetAllAsync(
+        CancellationToken cancellationToken);
+
     Task AddAsync(
         Athlete athlete,
         CancellationToken cancellationToken);

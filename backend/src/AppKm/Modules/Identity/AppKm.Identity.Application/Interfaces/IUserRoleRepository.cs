@@ -17,4 +17,8 @@ public interface IUserRoleRepository
     Task<IReadOnlyCollection<string>> GetRoleNamesByUserIdAsync(
         UserId userId,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyCollection<Guid>> GetUserIdsByRoleNameAsync(
+        string roleName,
+        CancellationToken cancellationToken);
 }

@@ -4,6 +4,7 @@ import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
+import 'admin_athletes_section.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -168,13 +169,7 @@ class _AdminScreenState extends State<AdminScreen> {
             email: _email,
             onOpenSection: _goToSection,
           ),
-          const _AdminPlaceholderSection(
-            icon: Icons.directions_run_rounded,
-            title: 'Atletas',
-            description:
-                'Aquí se administrarán los atletas registrados '
-                'y su estado dentro de App KM.',
-          ),
+          const AdminAthletesSection(),
           const _AdminPlaceholderSection(
             icon: Icons.storefront_rounded,
             title: 'Comercios',

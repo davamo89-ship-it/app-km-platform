@@ -52,4 +52,28 @@ internal sealed class UserRoleRepository : IUserRoleRepository
             select role.Name)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyCollection<Guid>>
+        GetUserIdsByRoleNameAsync(
+            string roleName,
+            CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+
+        string normalizedRoleName = roleName.Trim();
+
+        List<UserId> userIds =
+            await (
+                from userRole in _dbContext.UserRoles
+                join role in _dbContext.Roles
+                    on userRole.RoleId equals role.Id
+                where role.Name == normalizedRoleName
+                select userRole.UserId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        return userIds
+            .Select(userId => userId.Value)
+            .ToList();
+    }
 }
