@@ -19,6 +19,10 @@ class ApiConfig {
     return _buildUri(athletesBaseUrl, path);
   }
 
+  static String athletesHubUrl(String path) {
+    return athletesUri(path).toString();
+  }
+
   static Uri _buildUri(String baseUrl, String path) {
     final normalizedBase = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)

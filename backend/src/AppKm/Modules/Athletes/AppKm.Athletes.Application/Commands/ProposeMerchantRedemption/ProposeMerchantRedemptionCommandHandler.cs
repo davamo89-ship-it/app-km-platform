@@ -91,6 +91,7 @@ public sealed class ProposeMerchantRedemptionCommandHandler
             new ProposeMerchantRedemptionResult(
                 request.Id.Value,
                 merchant.Id.Value,
+                request.AthleteId,
                 request.Code,
                 request.ProposedPoints!.Value,
                 request.Status.ToString(),

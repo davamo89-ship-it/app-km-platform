@@ -1,13 +1,16 @@
 using System.Security.Claims;
 using AppKm.Athletes.Api.Contracts;
+using AppKm.Athletes.Api.Realtime;
 using AppKm.Athletes.Application.Commands.ProposeMerchantRedemption;
 using AppKm.Athletes.Application.Interfaces;
+using AppKm.Athletes.Domain.Aggregates.Athletes;
 using AppKm.Athletes.Application.Queries.GetLatestMerchantRedemption;
 using AppKm.Athletes.Application.Queries.GetMerchantRedemptionHistory;
 using AppKm.Athletes.Application.Queries.GetMerchantProfile;
 using AppKm.Athletes.Application.Queries.ValidateMerchantRedemption;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace AppKm.Athletes.Api.Controllers;
 
@@ -26,6 +29,8 @@ public sealed class MerchantsController : ControllerBase
         _getLatestRedemptionHandler;
     private readonly GetMerchantRedemptionHistoryQueryHandler
         _getRedemptionHistoryHandler;
+    private readonly IAthleteRepository _athleteRepository;
+    private readonly IHubContext<RedemptionHub> _redemptionHubContext;
 
     public MerchantsController(
         GetMerchantProfileQueryHandler getMerchantProfileHandler,
@@ -33,7 +38,8 @@ public sealed class MerchantsController : ControllerBase
         ProposeMerchantRedemptionCommandHandler proposeRedemptionHandler,
         IMerchantRepository merchantRepository,
         IRedemptionRequestRepository redemptionRequestRepository,
-        IAthleteRepository athleteRepository)
+        IAthleteRepository athleteRepository,
+        IHubContext<RedemptionHub> redemptionHubContext)
     {
         _getMerchantProfileHandler =
             getMerchantProfileHandler;
@@ -55,6 +61,9 @@ public sealed class MerchantsController : ControllerBase
                 merchantRepository,
                 redemptionRequestRepository,
                 athleteRepository);
+
+        _athleteRepository = athleteRepository;
+        _redemptionHubContext = redemptionHubContext;
     }
 
     [HttpGet("me")]
@@ -252,6 +261,25 @@ public sealed class MerchantsController : ControllerBase
                 code = result.Error.Code,
                 message = result.Error.Message
             });
+        }
+
+        Athlete? athlete =
+            await _athleteRepository.GetByIdAsync(
+                AthleteId.From(result.Value.AthleteId),
+                cancellationToken);
+
+        if (athlete is not null)
+        {
+            await _redemptionHubContext.Clients
+                .Group(RedemptionRealtimeGroups.User(athlete.UserId))
+                .SendAsync(
+                    RedemptionRealtimeEvents.RedemptionChanged,
+                    new
+                    {
+                        code = result.Value.Code,
+                        status = result.Value.Status
+                    },
+                    cancellationToken);
         }
 
         return Ok(result.Value);

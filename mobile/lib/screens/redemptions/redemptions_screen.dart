@@ -9,6 +9,7 @@ import '../../models/redemptions/redemption_request_item.dart';
 import '../../services/points/points_backend_api_service.dart';
 import '../../services/redemptions/pending_redemptions_backend_api_service.dart';
 import '../../services/redemptions/redemptions_backend_api_service.dart';
+import '../../services/realtime/redemption_realtime_service.dart';
 import '../dashboard/dashboard_screen.dart';
 
 class RedemptionsScreen extends StatefulWidget {
@@ -32,6 +33,7 @@ class _RedemptionsScreenState extends State<RedemptionsScreen>
       PendingRedemptionsBackendApiService();
   final PointsBackendApiService _pointsApi =
       PointsBackendApiService();
+  late final RedemptionRealtimeService _realtimeService;
 
   int _balance = 0;
   List<RedemptionRequestItem> _requests = const [];
@@ -49,7 +51,19 @@ class _RedemptionsScreenState extends State<RedemptionsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _realtimeService = RedemptionRealtimeService(
+      onRedemptionChanged: _handleRealtimeRedemptionChanged,
+    );
+    _realtimeService.start();
     _load();
+  }
+
+  Future<void> _handleRealtimeRedemptionChanged() async {
+    if (!mounted) {
+      return;
+    }
+
+    await _load();
   }
 
   @override
@@ -67,6 +81,7 @@ class _RedemptionsScreenState extends State<RedemptionsScreen>
     _redemptionsApi.dispose();
     _pendingRedemptionsApi.dispose();
     _pointsApi.dispose();
+    _realtimeService.dispose();
     super.dispose();
   }
 

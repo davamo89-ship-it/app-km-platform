@@ -1,5 +1,6 @@
 using System.Text;
 using AppKm.Athletes.Application.Queries.GetCurrentAthlete;
+using AppKm.Athletes.Api.Realtime;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -23,6 +24,7 @@ builder.Services.AddScoped<DisconnectStravaCommandHandler>();
 
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -97,6 +99,25 @@ builder.Services
 
                 RoleClaimType = "role"
             };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                string? accessToken =
+                    context.Request.Query["access_token"];
+
+                PathString path = context.HttpContext.Request.Path;
+
+                if (!string.IsNullOrWhiteSpace(accessToken) &&
+                    path.StartsWithSegments(RedemptionHub.Path))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -113,5 +134,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<RedemptionHub>(RedemptionHub.Path);
 
 app.Run();
