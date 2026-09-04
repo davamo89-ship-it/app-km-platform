@@ -6,6 +6,7 @@ import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import 'admin_athletes_section.dart';
 import 'admin_merchants_section.dart';
+import 'admin_redemptions_section.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -172,13 +173,7 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
           const AdminAthletesSection(),
           const AdminMerchantsSection(),
-          const _AdminPlaceholderSection(
-            icon: Icons.qr_code_2_rounded,
-            title: 'Canjes',
-            description:
-                'Aquí se consultarán los canjes realizados '
-                'y sus diferentes estados.',
-          ),
+          const AdminRedemptionsSection(),
         ],
       ),
       bottomNavigationBar: NavigationBar(

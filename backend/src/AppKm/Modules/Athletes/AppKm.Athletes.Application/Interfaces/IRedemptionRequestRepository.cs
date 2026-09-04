@@ -37,4 +37,8 @@ public interface IRedemptionRequestRepository
         Guid merchantId,
         int limit,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RedemptionRequest>> GetAllAsync(
+        int limit,
+        CancellationToken cancellationToken);
 }

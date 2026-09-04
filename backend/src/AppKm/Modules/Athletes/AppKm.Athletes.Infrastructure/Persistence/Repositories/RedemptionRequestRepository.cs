@@ -105,4 +105,15 @@ internal sealed class RedemptionRequestRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<RedemptionRequest>> GetAllAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.RedemptionRequests
+            .AsNoTracking()
+            .OrderByDescending(request => request.CreatedAtUtc)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+    }
 }

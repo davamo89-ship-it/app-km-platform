@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../core/config/api_config.dart';
 import '../../models/admin/admin_athlete_item.dart';
 import '../../models/admin/admin_merchant_item.dart';
+import '../../models/admin/admin_redemption_item.dart';
 import '../api/authenticated_api_client.dart';
 
 class AdminBackendApiException implements Exception {
@@ -82,6 +83,36 @@ class AdminBackendApiService {
     _throwRequestError(
       response.statusCode,
       fallbackMessage: 'No fue posible cargar los comercios.',
+    );
+  }
+
+  Future<List<AdminRedemptionItem>> getRedemptions() async {
+    final response = await _client.get(
+      ApiConfig.athletesUri('/api/v1/admin/redemptions'),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (decoded is! List<dynamic>) {
+        throw AdminBackendApiException(
+          'La respuesta de canjes no tiene el formato esperado.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      return decoded
+          .map(
+            (item) => AdminRedemptionItem.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    }
+
+    _throwRequestError(
+      response.statusCode,
+      fallbackMessage: 'No fue posible cargar los canjes.',
     );
   }
 
