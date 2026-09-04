@@ -121,15 +121,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
 
       case AppUserRole.admin:
-        await _authTokenStore.clearSession();
-
-        if (!mounted) {
-          return;
-        }
-
-        _showMessage(
-          'La interfaz de administración todavía '
-          'no está disponible en la app móvil.',
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.admin,
         );
         return;
 
@@ -238,7 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              'Ingresa con tu cuenta de atleta o comercio.',
+                              'Ingresa con tu cuenta de atleta, comercio o administración.',
                               style: TextStyle(
                                 color: Colors.black54,
                               ),

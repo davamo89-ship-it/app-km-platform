@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../screens/admin/admin_screen.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/dashboard/dashboard_screen.dart';
 import '../../screens/splash/splash_screen.dart';
@@ -8,6 +9,7 @@ class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';
   static const String dashboard = '/dashboard';
+  static const String admin = '/admin';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -26,6 +28,12 @@ class AppRoutes {
       case dashboard:
         return MaterialPageRoute(
           builder: (_) => const DashboardScreen(),
+          settings: settings,
+        );
+
+      case admin:
+        return MaterialPageRoute(
+          builder: (_) => const AdminScreen(),
           settings: settings,
         );
 

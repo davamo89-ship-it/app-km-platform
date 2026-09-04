@@ -152,6 +152,12 @@ class _SplashScreenState extends State<SplashScreen> {
           return;
 
         case AppUserRole.admin:
+          Navigator.pushReplacementNamed(
+            context,
+            AppRoutes.admin,
+          );
+          return;
+
         case AppUserRole.unknown:
           await _clearSessionAndGoToLogin();
           return;
