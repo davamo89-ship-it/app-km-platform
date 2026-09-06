@@ -74,6 +74,7 @@ public sealed class RejectAthleteRedemptionCommandHandler
         return Result<RejectAthleteRedemptionResult>.Success(
             new RejectAthleteRedemptionResult(
                 request.Id.Value,
+                request.MerchantId!.Value,
                 request.Code,
                 request.Status.ToString(),
                 now));

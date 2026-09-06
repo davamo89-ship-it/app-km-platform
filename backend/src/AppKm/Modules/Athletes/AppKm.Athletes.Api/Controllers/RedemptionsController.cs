@@ -1,13 +1,17 @@
 using System.IdentityModel.Tokens.Jwt;
 using AppKm.Athletes.Api.Contracts;
+using AppKm.Athletes.Api.Realtime;
 using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
 using AppKm.Athletes.Application.Commands.CancelRedemption;
 using AppKm.Athletes.Application.Queries.GetRedemptionRequests;
 using AppKm.Athletes.Application.Commands.ConfirmAthleteRedemption;
 using AppKm.Athletes.Application.Commands.RejectAthleteRedemption;
+using AppKm.Athletes.Application.Interfaces;
+using AppKm.Athletes.Domain.Aggregates.Merchants;
 using AppKm.Athletes.Application.Queries.GetPendingRedemptionConfirmation;
 
 namespace AppKm.Athletes.Api.Controllers;
@@ -37,6 +41,8 @@ public sealed class RedemptionsController : ControllerBase
 
     private readonly GetPendingRedemptionConfirmationQueryHandler
     _getPendingConfirmationHandler;
+    private readonly IMerchantRepository _merchantRepository;
+    private readonly IHubContext<RedemptionHub> _redemptionHubContext;
 
     public RedemptionsController(
         CreateRedemptionRequestCommandHandler createHandler,
@@ -45,7 +51,9 @@ public sealed class RedemptionsController : ControllerBase
         GetRedemptionRequestsQueryHandler getRequestsHandler,
         ConfirmAthleteRedemptionCommandHandler confirmAthleteRedemptionHandler,
         RejectAthleteRedemptionCommandHandler rejectAthleteRedemptionHandler,
-        GetPendingRedemptionConfirmationQueryHandler getPendingConfirmationHandler)
+        GetPendingRedemptionConfirmationQueryHandler getPendingConfirmationHandler,
+        IMerchantRepository merchantRepository,
+        IHubContext<RedemptionHub> redemptionHubContext)
     {
         _createHandler = createHandler;
         _completeHandler = completeHandler;
@@ -54,6 +62,8 @@ public sealed class RedemptionsController : ControllerBase
         _confirmAthleteRedemptionHandler = confirmAthleteRedemptionHandler;
         _rejectAthleteRedemptionHandler = rejectAthleteRedemptionHandler;
         _getPendingConfirmationHandler = getPendingConfirmationHandler;
+        _merchantRepository = merchantRepository;
+        _redemptionHubContext = redemptionHubContext;
     }
 
     [HttpPost]
@@ -225,6 +235,7 @@ public sealed class RedemptionsController : ControllerBase
                 });
             }
 
+            await NotifyMerchantAsync(result.Value.MerchantId, result.Value.Code, result.Value.Status, cancellationToken);
             return Ok(result.Value);
         }
 
@@ -263,6 +274,7 @@ public sealed class RedemptionsController : ControllerBase
                 });
             }
 
+            await NotifyMerchantAsync(result.Value.MerchantId, result.Value.Code, result.Value.Status, cancellationToken);
             return Ok(result.Value);
         }
     [HttpGet("pending-confirmation")]
@@ -302,4 +314,14 @@ public sealed class RedemptionsController : ControllerBase
 
                 return Ok(result.Value);
         }
+
+    private async Task NotifyMerchantAsync(Guid merchantId, string code, string status, CancellationToken cancellationToken)
+    {
+        Merchant? merchant = await _merchantRepository.GetByIdAsync(new MerchantId(merchantId), cancellationToken);
+        if (merchant is null) return;
+
+        await _redemptionHubContext.Clients
+            .Group(RedemptionRealtimeGroups.User(merchant.UserId))
+            .SendAsync(RedemptionRealtimeEvents.RedemptionChanged, new { code, status }, cancellationToken);
+    }
 }

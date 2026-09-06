@@ -10,6 +10,7 @@ import '../../services/api/authenticated_api_client.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/merchants/merchant_backend_api_service.dart';
+import '../../services/realtime/redemption_realtime_service.dart';
 import 'merchant_redemptions_history_screen.dart';
 
 class MerchantScreen extends StatefulWidget {
@@ -25,9 +26,13 @@ class _MerchantScreenState extends State<MerchantScreen> {
       MerchantBackendApiService();
   final AuthApiService _authApiService = AuthApiService();
   final AuthTokenStore _authTokenStore = AuthTokenStore();
+  late final RedemptionRealtimeService _realtimeService;
 
   final TextEditingController _codeController =
       TextEditingController();
+  final ScrollController _scrollController =
+      ScrollController();
+  final GlobalKey _validationResultKey = GlobalKey();
 
   MerchantProfile? _merchant;
   MerchantRedemptionValidation? _validation;
@@ -45,6 +50,10 @@ class _MerchantScreenState extends State<MerchantScreen> {
   @override
   void initState() {
     super.initState();
+    _realtimeService = RedemptionRealtimeService(
+      onRedemptionChanged: _handleRealtimeRedemptionChanged,
+    );
+    _realtimeService.start();
     _loadMerchant();
     _loadLatestRedemption(showErrors: false);
   }
@@ -52,9 +61,27 @@ class _MerchantScreenState extends State<MerchantScreen> {
   @override
   void dispose() {
     _codeController.dispose();
+    _scrollController.dispose();
+    _realtimeService.dispose();
     _merchantApi.dispose();
     _authApiService.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleRealtimeRedemptionChanged() async {
+    if (!mounted) return;
+
+    await _loadLatestRedemption(showErrors: false);
+
+    if (!mounted) return;
+
+    setState(() {
+      _codeController.clear();
+      _validation = null;
+      _proposalResult = null;
+      _redemptionError = null;
+      _showLatestRedemption = true;
+    });
   }
 
   Future<void> _loadMerchant() async {
@@ -98,11 +125,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _isLoadingProfile = false;
       });
 
-      _showMessage(
-        '$message '
-        'Se mantiene el último perfil disponible.',
-        isError: true,
-      );
     }
   }
 
@@ -122,10 +144,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
     } catch (error) {
       if (!mounted || !showErrors) return;
 
-      _showMessage(
-        _friendlyError(error),
-        isError: true,
-      );
     }
   }
 
@@ -139,9 +157,7 @@ class _MerchantScreenState extends State<MerchantScreen> {
     });
 
     if (_latestRedemption == null) {
-      _showMessage(
-        'Este comercio todavía no tiene canjes recientes.',
-      );
+      return;
     }
   }
 
@@ -150,10 +166,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
       _showLatestRedemption = false;
     });
 
-    _showMessage(
-      'Canje marcado como revisado. '
-      'El registro no fue eliminado.',
-    );
   }
 
   Future<void> _refreshScreen() async {
@@ -185,9 +197,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
           validation.status.trim().toLowerCase();
 
       if (_isClosedRedemptionStatus(normalizedStatus)) {
-        final message =
-            _closedRedemptionMessage(normalizedStatus);
-
         setState(() {
           _isValidating = false;
           _codeController.clear();
@@ -196,7 +205,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
           _redemptionError = null;
         });
 
-        _showMessage(message);
         return;
       }
 
@@ -204,6 +212,8 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _validation = validation;
         _isValidating = false;
       });
+
+      _scrollToValidationResult();
     } on MerchantBackendApiException catch (error) {
       if (!mounted) return;
 
@@ -236,14 +246,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
           _showLatestRedemption = true;
         });
 
-        _showMessage(
-          _friendlyError(error),
-        );
-      } else {
-        _showMessage(
-          error.message,
-          isError: true,
-        );
       }
     } catch (error) {
       if (!mounted) return;
@@ -255,11 +257,65 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _redemptionError = message;
       });
 
-      _showMessage(
-        message,
-        isError: true,
-      );
+      _scrollToValidationResult();
     }
+  }
+
+  void _scrollToValidationResult() {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      // Esperamos a que termine de aparecer la respuesta y a que
+      // el teclado libere el espacio de la pantalla.
+      await Future<void>.delayed(
+        const Duration(milliseconds: 420),
+      );
+
+      if (!mounted) return;
+
+      final resultContext =
+          _validationResultKey.currentContext;
+
+      if (resultContext != null &&
+          resultContext.mounted) {
+        await Scrollable.ensureVisible(
+          resultContext,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          alignment: 0.08,
+          alignmentPolicy:
+              ScrollPositionAlignmentPolicy.explicit,
+        );
+
+        // Segundo ajuste después de la animación para cubrir cambios
+        // tardíos del viewport en algunos dispositivos Android.
+        await Future<void>.delayed(
+          const Duration(milliseconds: 120),
+        );
+
+        if (resultContext.mounted) {
+          await Scrollable.ensureVisible(
+            resultContext,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: 0.08,
+            alignmentPolicy:
+                ScrollPositionAlignmentPolicy.explicit,
+          );
+        }
+        return;
+      }
+
+      if (_scrollController.hasClients) {
+        await _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   Future<void> _validateCode() async {
@@ -270,6 +326,8 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _redemptionError =
             'Ingrese el código de canje del atleta.';
       });
+
+      _scrollToValidationResult();
       return;
     }
 
@@ -292,6 +350,8 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _validation = validation;
         _isValidating = false;
       });
+
+      _scrollToValidationResult();
     } catch (error) {
       if (!mounted) return;
 
@@ -302,10 +362,7 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _redemptionError = message;
       });
 
-      _showMessage(
-        message,
-        isError: true,
-      );
+      _scrollToValidationResult();
     }
   }
 
@@ -342,9 +399,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _showLatestRedemption = true;
       });
 
-      _showMessage(
-        'Canje enviado al atleta para confirmación.',
-      );
     } catch (error) {
       if (!mounted) return;
 
@@ -355,10 +409,6 @@ class _MerchantScreenState extends State<MerchantScreen> {
         _redemptionError = message;
       });
 
-      _showMessage(
-        message,
-        isError: true,
-      );
     }
   }
 
@@ -417,47 +467,16 @@ class _MerchantScreenState extends State<MerchantScreen> {
                   (route) => false,
                 );
               },
-              icon: const Icon(Icons.logout_rounded),
+              icon: const Icon(
+              Icons.logout_rounded,
+              color: AppColors.primary,
+            ),
               label: const Text('Cerrar sesión'),
             ),
           ],
         );
       },
     );
-  }
-
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
-    if (!mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(
-                isError
-                    ? Icons.wifi_off_rounded
-                    : Icons.check_circle_outline_rounded,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(message),
-              ),
-            ],
-          ),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(
-            seconds: isError ? 5 : 3,
-          ),
-        ),
-      );
   }
 
   String _friendlyError(Object error) {
@@ -504,15 +523,29 @@ class _MerchantScreenState extends State<MerchantScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Comercio'),
-        backgroundColor: AppColors.background,
+        title: const Text(
+          'Comercio',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
         actions: [
           IconButton(
             tooltip: 'Actualizar',
             onPressed:
                 _isLoadingProfile ? null : _refreshScreen,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: AppColors.primary,
+            ),
           ),
           IconButton(
             tooltip: 'Historial de canjes',
@@ -524,7 +557,10 @@ class _MerchantScreenState extends State<MerchantScreen> {
                 ),
               );
             },
-            icon: const Icon(Icons.history_rounded),
+            icon: const Icon(
+              Icons.history_rounded,
+              color: AppColors.primary,
+            ),
           ),
           IconButton(
             tooltip: 'Cerrar sesión',
@@ -537,6 +573,7 @@ class _MerchantScreenState extends State<MerchantScreen> {
         child: RefreshIndicator(
           onRefresh: _refreshScreen,
           child: ListView(
+            controller: _scrollController,
             physics:
                 const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
@@ -610,22 +647,31 @@ class _MerchantScreenState extends State<MerchantScreen> {
                   }
                 },
               ),
-              if (_redemptionError != null) ...[
-                const SizedBox(height: 12),
-                _ErrorCard(
-                  message: _redemptionError!,
+              if (_redemptionError != null ||
+                  _validation != null)
+                KeyedSubtree(
+                  key: _validationResultKey,
+                  child: Column(
+                    children: [
+                      if (_redemptionError != null) ...[
+                        const SizedBox(height: 12),
+                        _ErrorCard(
+                          message: _redemptionError!,
+                        ),
+                      ],
+                      if (_validation != null) ...[
+                        const SizedBox(height: 18),
+                        _ValidatedRedemptionCard(
+                          validation: _validation!,
+                          isProposing: _isProposing,
+                          proposalResult: _proposalResult,
+                          onPropose: _proposePoints,
+                          onReset: _resetRedemption,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
-              if (_validation != null) ...[
-                const SizedBox(height: 18),
-                _ValidatedRedemptionCard(
-                  validation: _validation!,
-                  isProposing: _isProposing,
-                  proposalResult: _proposalResult,
-                  onPropose: _proposePoints,
-                  onReset: _resetRedemption,
-                ),
-              ],
             ],
           ),
         ),
@@ -1416,22 +1462,6 @@ bool _isClosedRedemptionStatus(String value) {
       return true;
     default:
       return false;
-  }
-}
-
-String _closedRedemptionMessage(String value) {
-  switch (value) {
-    case 'completed':
-      return 'El atleta confirmó el canje. '
-          'El canje fue completado.';
-    case 'expired':
-      return 'El código de canje venció.';
-    case 'cancelled':
-    case 'canceled':
-    case 'rejected':
-      return 'El atleta canceló el canje.';
-    default:
-      return 'El canje ya no está pendiente.';
   }
 }
 

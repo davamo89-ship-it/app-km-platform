@@ -91,6 +91,7 @@ public sealed class ConfirmAthleteRedemptionCommandHandler
         return Result<ConfirmAthleteRedemptionResult>.Success(
             new ConfirmAthleteRedemptionResult(
                 request.Id.Value,
+                request.MerchantId!.Value,
                 request.Code,
                 request.ProposedPoints.Value,
                 request.Status.ToString(),

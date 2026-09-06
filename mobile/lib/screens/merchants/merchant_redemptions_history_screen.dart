@@ -66,9 +66,20 @@ class _MerchantRedemptionsHistoryScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Historial de canjes'),
-        backgroundColor: AppColors.background,
+        title: const Text(
+          'Historial de canjes',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        iconTheme: const IconThemeData(
+          color: AppColors.primary,
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
