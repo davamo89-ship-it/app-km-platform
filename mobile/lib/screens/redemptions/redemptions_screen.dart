@@ -68,11 +68,19 @@ class _RedemptionsScreenState extends State<RedemptionsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
-        !_isProcessing &&
-        !_isLoading) {
-      _load();
+    if (state == AppLifecycleState.resumed) {
+      _resumeRealtimeAndRefresh();
     }
+  }
+
+  Future<void> _resumeRealtimeAndRefresh() async {
+    await _realtimeService.start();
+
+    if (!mounted || _isProcessing || _isLoading) {
+      return;
+    }
+
+    await _load();
   }
 
   @override

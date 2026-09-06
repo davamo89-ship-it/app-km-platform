@@ -21,7 +21,8 @@ class MerchantScreen extends StatefulWidget {
       _MerchantScreenState();
 }
 
-class _MerchantScreenState extends State<MerchantScreen> {
+class _MerchantScreenState extends State<MerchantScreen>
+    with WidgetsBindingObserver {
   final MerchantBackendApiService _merchantApi =
       MerchantBackendApiService();
   final AuthApiService _authApiService = AuthApiService();
@@ -50,6 +51,7 @@ class _MerchantScreenState extends State<MerchantScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _realtimeService = RedemptionRealtimeService(
       onRedemptionChanged: _handleRealtimeRedemptionChanged,
     );
@@ -60,12 +62,36 @@ class _MerchantScreenState extends State<MerchantScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _codeController.dispose();
     _scrollController.dispose();
     _realtimeService.dispose();
     _merchantApi.dispose();
     _authApiService.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _resumeRealtimeAndRefresh();
+    }
+  }
+
+  Future<void> _resumeRealtimeAndRefresh() async {
+    await _realtimeService.start();
+
+    if (!mounted) return;
+
+    await _loadMerchant();
+    await _loadLatestRedemption(showErrors: false);
+
+    if (!mounted) return;
+
+    final code = _codeController.text.trim();
+    if (code.isNotEmpty && _validation != null) {
+      await _refreshScreen();
+    }
   }
 
   Future<void> _handleRealtimeRedemptionChanged() async {

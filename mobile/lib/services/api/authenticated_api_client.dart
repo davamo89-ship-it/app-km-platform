@@ -31,6 +31,10 @@ class AuthenticatedApiClient {
   final AuthTokenStore _tokenStore;
   final AuthApiService _authApiService;
 
+  Future<String> getValidAccessToken() {
+    return _getValidAccessToken();
+  }
+
   Future<http.Response> get(Uri uri) async {
     return _sendWithAuthentication(
       (headers) => _client.get(

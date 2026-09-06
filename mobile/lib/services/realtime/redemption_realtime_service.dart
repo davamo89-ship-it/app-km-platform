@@ -4,15 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
 import '../../core/config/api_config.dart';
-import '../auth/auth_token_store.dart';
+import '../api/authenticated_api_client.dart';
 
 class RedemptionRealtimeService {
   RedemptionRealtimeService({
-    AuthTokenStore? tokenStore,
+    AuthenticatedApiClient? apiClient,
     this.onRedemptionChanged,
-  }) : _tokenStore = tokenStore ?? AuthTokenStore();
+  }) : _apiClient = apiClient ?? AuthenticatedApiClient();
 
-  final AuthTokenStore _tokenStore;
+  final AuthenticatedApiClient _apiClient;
   final Future<void> Function()? onRedemptionChanged;
 
   HubConnection? _connection;
@@ -39,15 +39,7 @@ class RedemptionRealtimeService {
             ApiConfig.athletesHubUrl('/hubs/redemptions'),
             options: HttpConnectionOptions(
               accessTokenFactory: () async {
-                final token = await _tokenStore.getAccessToken();
-
-                if (token == null || token.isEmpty) {
-                  throw StateError(
-                    'No hay un access token disponible para SignalR.',
-                  );
-                }
-
-                return token;
+                return _apiClient.getValidAccessToken();
               },
             ),
           )
@@ -121,5 +113,6 @@ class RedemptionRealtimeService {
   void dispose() {
     _disposed = true;
     unawaited(stop());
+    _apiClient.dispose();
   }
 }
