@@ -8,19 +8,24 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
+using AppKm.Identity.Application.Commands.RegisterPushDevice;
 using AppKm.Identity.Api.Security;
 using AppKm.Identity.Domain.Aggregates.Roles;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddIdentityInfrastructure(
     builder.Configuration);
+
 builder.Services.AddAthleteInfrastructure(
     builder.Configuration);
+
 builder.Services.AddScoped<RegisterUserCommandHandler>();
 builder.Services.AddScoped<LoginUserCommandHandler>();
 builder.Services.AddScoped<RefreshSessionCommandHandler>();
 builder.Services.AddScoped<LogoutSessionCommandHandler>();
+builder.Services.AddScoped<RegisterPushDeviceCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddControllers();
@@ -76,51 +81,51 @@ builder.Services
     .AddAuthentication(
         JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
-{
-    options.MapInboundClaims = false;
-    options.IncludeErrorDetails = true;
-
-    options.TokenValidationParameters =
-        new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwtOptions.Issuer,
-
-            ValidateAudience = true,
-            ValidAudience = jwtOptions.Audience,
-
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey =
-                new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(
-                        jwtOptions.Secret)),
-
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-
-            RoleClaimType = "role",
-        };
-
-    options.Events = new JwtBearerEvents
     {
-        OnAuthenticationFailed = context =>
+        options.MapInboundClaims = false;
+        options.IncludeErrorDetails = true;
+
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = jwtOptions.Issuer,
+
+                ValidateAudience = true,
+                ValidAudience = jwtOptions.Audience,
+
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey =
+                    new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(
+                            jwtOptions.Secret)),
+
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero,
+
+                RoleClaimType = "role",
+            };
+
+        options.Events = new JwtBearerEvents
         {
-            Console.WriteLine(
-                $"JWT authentication failed: " +
-                $"{context.Exception.GetType().Name} - " +
-                $"{context.Exception.Message}");
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine(
+                    $"JWT authentication failed: " +
+                    $"{context.Exception.GetType().Name} - " +
+                    $"{context.Exception.Message}");
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
 
-        OnTokenValidated = context =>
-        {
-            Console.WriteLine("JWT validated successfully.");
+            OnTokenValidated = context =>
+            {
+                Console.WriteLine("JWT validated successfully.");
 
-            return Task.CompletedTask;
-        }
-    };
-});
+                return Task.CompletedTask;
+            }
+        };
+    });
 
 builder.Services.AddAuthorization(options =>
 {

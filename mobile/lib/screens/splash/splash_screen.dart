@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/role_access_service.dart';
+import '../../services/notifications/push_device_registration_service.dart';
 import '../merchants/merchant_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -129,6 +130,9 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       final role =
           await _roleAccessService.resolveCurrentRole();
+
+      await PushDeviceRegistrationService.instance
+          .syncCurrentToken();
 
       if (!mounted) {
         return;

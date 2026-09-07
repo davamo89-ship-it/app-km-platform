@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/role_access_service.dart';
+import '../../services/notifications/push_device_registration_service.dart';
 import '../merchants/merchant_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -59,6 +60,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       await _authTokenStore.saveSession(result);
+
+      await PushDeviceRegistrationService.instance
+          .syncCurrentToken();
 
       final role =
           await _roleAccessService.resolveCurrentRole();

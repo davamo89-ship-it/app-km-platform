@@ -28,7 +28,9 @@ public static class IdentityInfrastructureExtensions
 
         services.AddScoped<ISessionRepository, SessionRepository>();
 
-        services.AddScoped<IUserRoleRepository,UserRoleRepository>();
+        services.AddScoped<IUserRoleRepository, UserRoleRepository>();
+
+        services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
 
         services.AddScoped<IUnitOfWork>(
             serviceProvider =>
@@ -43,7 +45,8 @@ public static class IdentityInfrastructureExtensions
 
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
 
-        services.Configure<RefreshTokenOptions>(configuration.GetSection(RefreshTokenOptions.SectionName));
+        services.Configure<RefreshTokenOptions>(
+            configuration.GetSection(RefreshTokenOptions.SectionName));
 
         services.AddSingleton<IRefreshTokenGenerator, RefreshTokenGenerator>();
 
