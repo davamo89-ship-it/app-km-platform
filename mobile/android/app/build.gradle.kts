@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.app_km_prototipo1"
+    namespace = "com.appkm.mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +15,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.app_km_prototipo1"
+        // Unique Android application ID for App KM.
+        applicationId = "com.appkm.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
