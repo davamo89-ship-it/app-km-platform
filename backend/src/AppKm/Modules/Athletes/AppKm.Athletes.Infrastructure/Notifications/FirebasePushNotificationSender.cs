@@ -93,6 +93,15 @@ internal sealed class FirebasePushNotificationSender
                 }
                 catch (FirebaseMessagingException exception)
                 {
+                    if (exception.MessagingErrorCode ==
+                        MessagingErrorCode.Unregistered)
+                    {
+                        await DeactivateTokenAsync(
+                            token,
+                            userId,
+                            cancellationToken);
+                    }
+
                     _logger.LogWarning(
                         exception,
                         "FCM could not deliver a redemption notification " +
@@ -154,6 +163,70 @@ internal sealed class FirebasePushNotificationSender
         }
 
         return tokens;
+    }
+
+    private async Task DeactivateTokenAsync(
+        string token,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var connection =
+                new NpgsqlConnection(_identityConnectionString);
+
+            await connection.OpenAsync(cancellationToken);
+
+            const string sql =
+                "UPDATE identity.push_devices " +
+                "SET is_active = FALSE, " +
+                "updated_at_utc = @updated_at_utc " +
+                "WHERE token = @token " +
+                "AND user_id = @user_id " +
+                "AND is_active = TRUE;";
+
+            await using var command =
+                new NpgsqlCommand(sql, connection);
+
+            command.Parameters.AddWithValue(
+                "token",
+                token.Trim());
+
+            command.Parameters.AddWithValue(
+                "user_id",
+                userId);
+
+            command.Parameters.AddWithValue(
+                "updated_at_utc",
+                DateTimeOffset.UtcNow);
+
+            int affectedRows =
+                await command.ExecuteNonQueryAsync(
+                    cancellationToken);
+
+            if (affectedRows > 0)
+            {
+                _logger.LogInformation(
+                    "FCM device token was marked inactive " +
+                    "after Firebase reported it as unregistered " +
+                    "for user {UserId}.",
+                    userId);
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // A cleanup failure must never fail the redemption flow.
+            _logger.LogWarning(
+                exception,
+                "FCM reported an unregistered device for user {UserId}, " +
+                "but the token could not be marked inactive.",
+                userId);
+        }
     }
 
     private async Task<FirebaseMessaging?> GetMessagingAsync(
