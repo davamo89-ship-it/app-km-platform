@@ -6,6 +6,7 @@ import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/role_access_service.dart';
 import '../../services/notifications/push_device_registration_service.dart';
+import '../../services/notifications/push_notification_navigation_service.dart';
 import '../merchants/merchant_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -135,6 +136,14 @@ class _SplashScreenState extends State<SplashScreen> {
           .syncCurrentToken();
 
       if (!mounted) {
+        return;
+      }
+
+      final openedPush =
+          await PushNotificationNavigationService.instance
+              .openPendingForRole(role);
+
+      if (openedPush || !mounted) {
         return;
       }
 

@@ -31,6 +31,7 @@ public sealed class MerchantsController : ControllerBase
         _getRedemptionHistoryHandler;
     private readonly IAthleteRepository _athleteRepository;
     private readonly IHubContext<RedemptionHub> _redemptionHubContext;
+    private readonly IPushNotificationSender _pushNotificationSender;
 
     public MerchantsController(
         GetMerchantProfileQueryHandler getMerchantProfileHandler,
@@ -39,7 +40,8 @@ public sealed class MerchantsController : ControllerBase
         IMerchantRepository merchantRepository,
         IRedemptionRequestRepository redemptionRequestRepository,
         IAthleteRepository athleteRepository,
-        IHubContext<RedemptionHub> redemptionHubContext)
+        IHubContext<RedemptionHub> redemptionHubContext,
+        IPushNotificationSender pushNotificationSender)
     {
         _getMerchantProfileHandler =
             getMerchantProfileHandler;
@@ -64,6 +66,7 @@ public sealed class MerchantsController : ControllerBase
 
         _athleteRepository = athleteRepository;
         _redemptionHubContext = redemptionHubContext;
+        _pushNotificationSender = pushNotificationSender;
     }
 
     [HttpGet("me")]
@@ -280,6 +283,14 @@ public sealed class MerchantsController : ControllerBase
                         status = result.Value.Status
                     },
                     cancellationToken);
+
+            await _pushNotificationSender.SendRedemptionChangedAsync(
+                athlete.UserId,
+                result.Value.Code,
+                result.Value.Status,
+                "Canje pendiente",
+                "Tiene una solicitud de canje pendiente de confirmación.",
+                cancellationToken);
         }
 
         return Ok(result.Value);

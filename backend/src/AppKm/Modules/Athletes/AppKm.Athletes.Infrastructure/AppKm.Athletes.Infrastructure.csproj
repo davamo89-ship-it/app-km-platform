@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\AppKm.Athletes.Domain\AppKm.Athletes.Domain.csproj" />
@@ -8,6 +8,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.29" />

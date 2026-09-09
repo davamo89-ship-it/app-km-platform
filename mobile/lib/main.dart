@@ -7,6 +7,7 @@ import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'services/notifications/push_device_registration_service.dart';
 import 'services/notifications/push_notification_service.dart';
+import 'services/notifications/push_notification_navigation_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ Future<void> main() async {
   await PushNotificationService.instance.initialize();
 
   PushDeviceRegistrationService.instance.initialize();
+  PushNotificationNavigationService.instance.initialize();
 
   runApp(const AppKM());
 }
@@ -28,6 +30,8 @@ class AppKM extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey:
+          PushNotificationNavigationService.instance.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'App KM',
       theme: AppTheme.lightTheme,

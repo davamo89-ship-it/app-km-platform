@@ -6,6 +6,7 @@ import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/role_access_service.dart';
 import '../../services/notifications/push_device_registration_service.dart';
+import '../../services/notifications/push_notification_navigation_service.dart';
 import '../merchants/merchant_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -108,6 +109,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _navigateForRole(
     AppUserRole role,
   ) async {
+    final openedPush =
+        await PushNotificationNavigationService.instance
+            .openPendingForRole(role);
+
+    if (openedPush || !mounted) {
+      return;
+    }
+
     switch (role) {
       case AppUserRole.athlete:
         Navigator.pushReplacementNamed(

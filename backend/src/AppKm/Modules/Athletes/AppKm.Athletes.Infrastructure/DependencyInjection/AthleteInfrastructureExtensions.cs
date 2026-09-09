@@ -2,6 +2,7 @@ using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Infrastructure.Persistence;
 using AppKm.Athletes.Infrastructure.Persistence.Repositories;
 using AppKm.Athletes.Infrastructure.Integration;
+using AppKm.Athletes.Infrastructure.Notifications;
 using AppKm.Identity.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -146,6 +147,10 @@ public static class AthleteInfrastructureExtensions
         services.AddScoped<
             IMerchantRepository,
             MerchantRepository>();
+
+        services.AddSingleton<
+            IPushNotificationSender,
+            FirebasePushNotificationSender>();
 
         return services;
     }

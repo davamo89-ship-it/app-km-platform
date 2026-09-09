@@ -43,6 +43,7 @@ public sealed class RedemptionsController : ControllerBase
     _getPendingConfirmationHandler;
     private readonly IMerchantRepository _merchantRepository;
     private readonly IHubContext<RedemptionHub> _redemptionHubContext;
+    private readonly IPushNotificationSender _pushNotificationSender;
 
     public RedemptionsController(
         CreateRedemptionRequestCommandHandler createHandler,
@@ -53,7 +54,8 @@ public sealed class RedemptionsController : ControllerBase
         RejectAthleteRedemptionCommandHandler rejectAthleteRedemptionHandler,
         GetPendingRedemptionConfirmationQueryHandler getPendingConfirmationHandler,
         IMerchantRepository merchantRepository,
-        IHubContext<RedemptionHub> redemptionHubContext)
+        IHubContext<RedemptionHub> redemptionHubContext,
+        IPushNotificationSender pushNotificationSender)
     {
         _createHandler = createHandler;
         _completeHandler = completeHandler;
@@ -64,6 +66,7 @@ public sealed class RedemptionsController : ControllerBase
         _getPendingConfirmationHandler = getPendingConfirmationHandler;
         _merchantRepository = merchantRepository;
         _redemptionHubContext = redemptionHubContext;
+        _pushNotificationSender = pushNotificationSender;
     }
 
     [HttpPost]
@@ -315,13 +318,52 @@ public sealed class RedemptionsController : ControllerBase
                 return Ok(result.Value);
         }
 
-    private async Task NotifyMerchantAsync(Guid merchantId, string code, string status, CancellationToken cancellationToken)
+    private async Task NotifyMerchantAsync(
+        Guid merchantId,
+        string code,
+        string status,
+        CancellationToken cancellationToken)
     {
-        Merchant? merchant = await _merchantRepository.GetByIdAsync(new MerchantId(merchantId), cancellationToken);
-        if (merchant is null) return;
+        Merchant? merchant =
+            await _merchantRepository.GetByIdAsync(
+                new MerchantId(merchantId),
+                cancellationToken);
+
+        if (merchant is null)
+        {
+            return;
+        }
 
         await _redemptionHubContext.Clients
             .Group(RedemptionRealtimeGroups.User(merchant.UserId))
-            .SendAsync(RedemptionRealtimeEvents.RedemptionChanged, new { code, status }, cancellationToken);
+            .SendAsync(
+                RedemptionRealtimeEvents.RedemptionChanged,
+                new
+                {
+                    code,
+                    status
+                },
+                cancellationToken);
+
+        bool completed = string.Equals(
+            status,
+            "Completed",
+            StringComparison.OrdinalIgnoreCase);
+
+        string title = completed
+            ? "Canje confirmado"
+            : "Canje cancelado";
+
+        string body = completed
+            ? "El atleta confirmó el canje."
+            : "El atleta canceló el canje.";
+
+        await _pushNotificationSender.SendRedemptionChangedAsync(
+            merchant.UserId,
+            code,
+            status,
+            title,
+            body,
+            cancellationToken);
     }
 }
