@@ -10,6 +10,7 @@ import '../../services/api/authenticated_api_client.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/merchants/merchant_backend_api_service.dart';
+import '../../services/notifications/push_device_registration_service.dart';
 import '../../services/realtime/redemption_realtime_service.dart';
 import 'merchant_redemptions_history_screen.dart';
 
@@ -466,6 +467,9 @@ class _MerchantScreenState extends State<MerchantScreen>
             FilledButton.icon(
               onPressed: () async {
                 Navigator.pop(dialogContext);
+
+                await PushDeviceRegistrationService.instance
+                    .deactivateCurrentTokenForLogout();
 
                 try {
                   final refreshToken =

@@ -130,6 +130,58 @@ class PushDeviceRegistrationService {
     }
   }
 
+  Future<void> deactivateCurrentTokenForLogout() async {
+    final token =
+        PushNotificationService.instance.currentToken;
+
+    if (token == null || token.trim().isEmpty) {
+      _lastRegisteredToken = null;
+      return;
+    }
+
+    final hasSession = await _authTokenStore.hasSession();
+
+    if (!hasSession) {
+      _lastRegisteredToken = null;
+      return;
+    }
+
+    final normalizedToken = token.trim();
+
+    try {
+      final response = await _apiClient.post(
+        ApiConfig.identityUri(
+          '/api/v1/identity/push-devices/deactivate',
+        ),
+        body: {
+          'token': normalizedToken,
+        },
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        debugPrint(
+          '[FCM] Dispositivo desactivado en backend '
+          'antes del logout.',
+        );
+      } else {
+        debugPrint(
+          '[FCM] Backend rechazó la desactivación '
+          'del dispositivo. status=${response.statusCode}',
+        );
+      }
+    } catch (error) {
+      // El logout local no debe quedar bloqueado
+      // por un fallo de red o del servicio push.
+      debugPrint(
+        '[FCM] No fue posible desactivar el dispositivo '
+        'antes del logout: $error',
+      );
+    } finally {
+      _lastRegisteredToken = null;
+    }
+  }
+
   Future<void> resetForLogout() async {
     _lastRegisteredToken = null;
   }

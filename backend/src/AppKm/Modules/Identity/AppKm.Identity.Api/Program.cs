@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
 using AppKm.Identity.Application.Commands.RegisterPushDevice;
+using AppKm.Identity.Application.Commands.DeactivatePushDevice;
 using AppKm.Identity.Api.Security;
 using AppKm.Identity.Domain.Aggregates.Roles;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
@@ -26,6 +27,7 @@ builder.Services.AddScoped<LoginUserCommandHandler>();
 builder.Services.AddScoped<RefreshSessionCommandHandler>();
 builder.Services.AddScoped<LogoutSessionCommandHandler>();
 builder.Services.AddScoped<RegisterPushDeviceCommandHandler>();
+builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddControllers();

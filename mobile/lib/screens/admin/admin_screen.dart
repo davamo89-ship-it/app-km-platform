@@ -4,6 +4,7 @@ import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
+import '../../services/notifications/push_device_registration_service.dart';
 import 'admin_athletes_section.dart';
 import 'admin_merchants_section.dart';
 import 'admin_redemptions_section.dart';
@@ -58,6 +59,9 @@ class _AdminScreenState extends State<AdminScreen> {
     });
 
     try {
+      await PushDeviceRegistrationService.instance
+          .deactivateCurrentTokenForLogout();
+
       final refreshToken =
           await _authTokenStore.getRefreshToken();
 
