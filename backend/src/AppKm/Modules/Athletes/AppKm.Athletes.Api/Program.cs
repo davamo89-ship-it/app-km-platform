@@ -16,6 +16,25 @@ using AppKm.Athletes.Application.Commands.DisconnectStrava;
 
 var builder = WebApplication.CreateBuilder(args);
 
+string athleteDatabaseConnectionString =
+    builder.Configuration.GetConnectionString("AthleteDatabase")
+    ?? throw new InvalidOperationException(
+        "The AthleteDatabase connection string is missing.");
+
+string identityDatabaseConnectionString =
+    builder.Configuration.GetConnectionString("IdentityDatabase")
+    ?? throw new InvalidOperationException(
+        "The IdentityDatabase connection string is missing.");
+
+string firebaseProjectId =
+    builder.Configuration["Firebase:ProjectId"]
+    ?? throw new InvalidOperationException(
+        "Firebase:ProjectId is missing.");
+
+_ = athleteDatabaseConnectionString;
+_ = identityDatabaseConnectionString;
+_ = firebaseProjectId;
+
 builder.Services.AddAthleteInfrastructure(
     builder.Configuration);
 
