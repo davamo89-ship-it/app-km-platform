@@ -19,8 +19,24 @@ using AppKm.Athletes.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+});
+
 if (!builder.Environment.IsDevelopment())
 {
+    string? allowedHosts =
+        builder.Configuration["AllowedHosts"];
+
+    if (string.IsNullOrWhiteSpace(allowedHosts) ||
+        allowedHosts.Trim() == "*" ||
+        allowedHosts.StartsWith("REPLACE_", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires an explicit AllowedHosts value.");
+    }
+
     string? productionIdentityDatabase =
         builder.Configuration.GetConnectionString("IdentityDatabase");
 
@@ -258,6 +274,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseExceptionHandler();
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    await next();
+});
 
 if (!app.Environment.IsDevelopment())
 {
