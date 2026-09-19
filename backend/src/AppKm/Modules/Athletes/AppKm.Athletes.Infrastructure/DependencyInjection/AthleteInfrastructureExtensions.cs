@@ -95,11 +95,21 @@ public static class AthleteInfrastructureExtensions
 
         services.AddHttpClient<
             IStravaOAuthClient,
-            StravaOAuthClient>();
+            StravaOAuthClient>(
+                client =>
+                {
+                    client.Timeout =
+                        TimeSpan.FromSeconds(15);
+                });
 
         services.AddHttpClient<
             IStravaTokenRevocationService,
-            StravaTokenRevocationService>();
+            StravaTokenRevocationService>(
+                client =>
+                {
+                    client.Timeout =
+                        TimeSpan.FromSeconds(15);
+                });
 
         services.AddScoped<
             IStravaAccessTokenService,
@@ -107,7 +117,12 @@ public static class AthleteInfrastructureExtensions
 
         services.AddHttpClient<
             IStravaActivitiesClient,
-            StravaActivitiesClient>();
+            StravaActivitiesClient>(
+                client =>
+                {
+                    client.Timeout =
+                        TimeSpan.FromSeconds(30);
+                });
 
         services.AddSingleton<
             IStravaTokenProtector,
