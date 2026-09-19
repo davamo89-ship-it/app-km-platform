@@ -19,6 +19,36 @@ using AppKm.Athletes.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (!builder.Environment.IsDevelopment())
+{
+    string? productionIdentityDatabase =
+        builder.Configuration.GetConnectionString("IdentityDatabase");
+
+    string? productionAthleteDatabase =
+        builder.Configuration.GetConnectionString("AthleteDatabase");
+
+    string? productionJwtSecret =
+        builder.Configuration["Jwt:Secret"];
+
+    if (string.IsNullOrWhiteSpace(productionIdentityDatabase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires ConnectionStrings:IdentityDatabase.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionAthleteDatabase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires ConnectionStrings:AthleteDatabase.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionJwtSecret))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Secret.");
+    }
+}
+
 builder.Services.AddIdentityInfrastructure(
     builder.Configuration);
 

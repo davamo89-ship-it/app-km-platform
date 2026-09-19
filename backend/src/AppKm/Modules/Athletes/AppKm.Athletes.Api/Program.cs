@@ -16,6 +16,45 @@ using AppKm.Athletes.Application.Commands.DisconnectStrava;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (!builder.Environment.IsDevelopment())
+{
+    string? productionAthleteDatabase =
+        builder.Configuration.GetConnectionString("AthleteDatabase");
+
+    string? productionIdentityDatabase =
+        builder.Configuration.GetConnectionString("IdentityDatabase");
+
+    string? productionJwtSecret =
+        builder.Configuration["Jwt:Secret"];
+
+    string? productionFirebaseProjectId =
+        builder.Configuration["Firebase:ProjectId"];
+
+    if (string.IsNullOrWhiteSpace(productionAthleteDatabase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires ConnectionStrings:AthleteDatabase.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionIdentityDatabase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires ConnectionStrings:IdentityDatabase.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionJwtSecret))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Secret.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionFirebaseProjectId))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Firebase:ProjectId.");
+    }
+}
+
 string athleteDatabaseConnectionString =
     builder.Configuration.GetConnectionString("AthleteDatabase")
     ?? throw new InvalidOperationException(
