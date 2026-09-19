@@ -66,6 +66,11 @@ builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(30);
+});
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode =
@@ -253,6 +258,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseExceptionHandler();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
 
 app.UseHttpsRedirection();
 
