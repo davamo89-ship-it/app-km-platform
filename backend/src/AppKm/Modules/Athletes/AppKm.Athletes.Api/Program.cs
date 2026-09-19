@@ -197,6 +197,15 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+builder.Services
+    .AddHealthChecks()
+    .AddNpgSql(
+        athleteDatabaseConnectionString,
+        name: "athletes-postgresql")
+    .AddNpgSql(
+        identityDatabaseConnectionString,
+        name: "identity-postgresql");
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -212,6 +221,7 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.MapHub<RedemptionHub>(RedemptionHub.Path);
 
 app.Run();
