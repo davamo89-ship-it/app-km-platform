@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
@@ -290,6 +291,51 @@ builder.Services
         name: "identity-postgresql");
 
 var app = builder.Build();
+
+ILogger requestLogger =
+    app.Services
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("AppKm.Request");
+
+app.Use(async (context, next) =>
+{
+    string correlationId =
+        context.TraceIdentifier;
+
+    context.Response.Headers["X-Correlation-ID"] =
+        correlationId;
+
+    var stopwatch =
+        Stopwatch.StartNew();
+
+    using IDisposable? scope =
+        requestLogger.BeginScope(
+            new Dictionary<string, object?>
+            {
+                ["CorrelationId"] = correlationId,
+                ["Service"] = "AppKm.Identity.Api",
+                ["RequestMethod"] = context.Request.Method,
+                ["RequestPath"] = context.Request.Path.Value ?? "/"
+            });
+
+    try
+    {
+        await next();
+    }
+    finally
+    {
+        stopwatch.Stop();
+
+        requestLogger.LogInformation(
+            "HTTP {RequestMethod} {RequestPath} responded {StatusCode} " +
+            "in {ElapsedMilliseconds} ms. CorrelationId={CorrelationId}",
+            context.Request.Method,
+            context.Request.Path.Value ?? "/",
+            context.Response.StatusCode,
+            stopwatch.Elapsed.TotalMilliseconds,
+            correlationId);
+    }
+});
 
 if (app.Environment.IsDevelopment())
 {
