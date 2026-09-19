@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using AppKm.Identity.Infrastructure.DependencyInjection;
 using AppKm.Identity.Application.Commands.RegisterUser;
 using AppKm.Identity.Application.Commands.LoginUser;
@@ -31,6 +34,67 @@ builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddControllers();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode =
+        StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(
+        "identity-auth",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey:
+                    context.Connection.RemoteIpAddress?.ToString()
+                    ?? "unknown",
+                factory: _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+
+    options.AddPolicy(
+        "identity-refresh",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey:
+                    context.Connection.RemoteIpAddress?.ToString()
+                    ?? "unknown",
+                factory: _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+
+    options.AddPolicy(
+        "identity-device",
+        context =>
+        {
+            string partitionKey =
+                context.User
+                    .FindFirst(JwtRegisteredClaimNames.Sub)
+                    ?.Value
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey,
+                _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+        });
+});
 
 // Documentación OpenAPI para desarrollo
 builder.Services.AddEndpointsApiExplorer();
@@ -179,6 +243,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

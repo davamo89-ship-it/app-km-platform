@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Text;
 using AppKm.Athletes.Application.Queries.GetCurrentAthlete;
 using AppKm.Athletes.Api.Realtime;
@@ -24,6 +27,58 @@ builder.Services.AddScoped<DisconnectStravaCommandHandler>();
 
 
 builder.Services.AddControllers();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode =
+        StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(
+        "redemption-write",
+        context =>
+        {
+            string partitionKey =
+                context.User
+                    .FindFirst(JwtRegisteredClaimNames.Sub)
+                    ?.Value
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey,
+                _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+        });
+
+    options.AddPolicy(
+        "redemption-validate",
+        context =>
+        {
+            string partitionKey =
+                context.User
+                    .FindFirst(JwtRegisteredClaimNames.Sub)
+                    ?.Value
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey,
+                _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+        });
+});
 builder.Services.AddSignalR();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -131,6 +186,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

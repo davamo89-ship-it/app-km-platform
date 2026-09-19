@@ -4,12 +4,14 @@ using AppKm.Identity.Application.Commands.DeactivatePushDevice;
 using AppKm.Identity.Application.Commands.RegisterPushDevice;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AppKm.Identity.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/identity/push-devices")]
 [Authorize]
+[EnableRateLimiting("identity-device")]
 public sealed class PushDevicesController : ControllerBase
 {
     private readonly RegisterPushDeviceCommandHandler

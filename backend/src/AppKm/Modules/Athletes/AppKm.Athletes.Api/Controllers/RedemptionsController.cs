@@ -4,6 +4,7 @@ using AppKm.Athletes.Api.Realtime;
 using AppKm.Athletes.Application.Commands.CreateRedemptionRequest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using AppKm.Athletes.Application.Commands.CompleteRedemption;
 using AppKm.Athletes.Application.Commands.CancelRedemption;
@@ -70,6 +71,7 @@ public sealed class RedemptionsController : ControllerBase
     }
 
     [HttpPost]
+    [EnableRateLimiting("redemption-write")]
     public async Task<IActionResult> Create(
         CreateRedemptionRequestRequest request,
         CancellationToken cancellationToken)
@@ -108,6 +110,7 @@ public sealed class RedemptionsController : ControllerBase
     }
 
     [HttpPost("complete")]
+    [EnableRateLimiting("redemption-write")]
     public async Task<IActionResult> Complete(
         CompleteRedemptionRequest request,
         CancellationToken cancellationToken)
@@ -134,6 +137,7 @@ public sealed class RedemptionsController : ControllerBase
     }
 
     [HttpPost("cancel")]
+    [EnableRateLimiting("redemption-write")]
     public async Task<IActionResult> Cancel(
         CancelRedemptionRequest request,
         CancellationToken cancellationToken)
@@ -204,6 +208,7 @@ public sealed class RedemptionsController : ControllerBase
         }
 
         [HttpPost("{code}/confirm")]
+    [EnableRateLimiting("redemption-write")]
         public async Task<IActionResult> ConfirmByAthlete(
             string code,
             CancellationToken cancellationToken)
@@ -243,6 +248,7 @@ public sealed class RedemptionsController : ControllerBase
         }
 
         [HttpPost("{code}/reject")]
+    [EnableRateLimiting("redemption-write")]
         public async Task<IActionResult> RejectByAthlete(
             string code,
             CancellationToken cancellationToken)

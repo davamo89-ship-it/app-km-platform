@@ -5,6 +5,7 @@ using AppKm.Identity.Application.Commands.LoginUser;
 using Platform.SharedKernel.Errors;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
 
@@ -44,6 +45,7 @@ public sealed class IdentityController : ControllerBase
         return Ok(response);
     }
     [HttpPost("register")]
+    [EnableRateLimiting("identity-auth")]
     [ProducesResponseType<RegisterUserResponse>(
         StatusCodes.Status201Created)]
     [ProducesResponseType<ErrorResponse>(
@@ -85,6 +87,7 @@ public sealed class IdentityController : ControllerBase
             error.Message);
     }
     [HttpPost("login")]
+    [EnableRateLimiting("identity-auth")]
     [ProducesResponseType<LoginUserResponse>(
         StatusCodes.Status200OK)]
     [ProducesResponseType<ErrorResponse>(
@@ -163,6 +166,7 @@ public sealed class IdentityController : ControllerBase
     }
 
         [HttpPost("refresh")]
+        [EnableRateLimiting("identity-refresh")]
         [ProducesResponseType<RefreshSessionResponse>(
             StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorResponse>(

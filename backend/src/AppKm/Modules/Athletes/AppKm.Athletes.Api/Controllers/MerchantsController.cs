@@ -10,6 +10,7 @@ using AppKm.Athletes.Application.Queries.GetMerchantProfile;
 using AppKm.Athletes.Application.Queries.ValidateMerchantRedemption;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 
 namespace AppKm.Athletes.Api.Controllers;
@@ -186,6 +187,7 @@ public sealed class MerchantsController : ControllerBase
     }
 
     [HttpGet("redemptions/{code}")]
+    [EnableRateLimiting("redemption-validate")]
     public async Task<IActionResult> ValidateRedemption(
         string code,
         CancellationToken cancellationToken)
@@ -225,6 +227,7 @@ public sealed class MerchantsController : ControllerBase
     }
 
     [HttpPost("redemptions/{code}/proposal")]
+    [EnableRateLimiting("redemption-write")]
     public async Task<IActionResult> ProposeRedemption(
         string code,
         ProposeMerchantRedemptionRequest request,
