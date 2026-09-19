@@ -33,6 +33,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppKm.Athletes.Infrastructu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppKm.Athletes.Api", "src\AppKm\Modules\Athletes\AppKm.Athletes.Api\AppKm.Athletes.Api.csproj", "{7E1325A1-B392-4F1E-9287-BB10114396CF}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{03EA7F48-3D4E-4881-8402-37A60FDC62E7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppKm.Athletes.Application.Tests", "tests\AppKm.Athletes.Application.Tests\AppKm.Athletes.Application.Tests.csproj", "{DE60858C-B395-4F27-9CD8-2A1992BE9842}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -78,6 +82,10 @@ Global
 		{7E1325A1-B392-4F1E-9287-BB10114396CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7E1325A1-B392-4F1E-9287-BB10114396CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7E1325A1-B392-4F1E-9287-BB10114396CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE60858C-B395-4F27-9CD8-2A1992BE9842}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE60858C-B395-4F27-9CD8-2A1992BE9842}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE60858C-B395-4F27-9CD8-2A1992BE9842}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE60858C-B395-4F27-9CD8-2A1992BE9842}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8F4C94FA-84F3-4D1C-B74C-70F42CAFBAE4} = {72A9C093-E3DE-4602-BCD6-4380787FB1E0}
@@ -94,5 +102,6 @@ Global
 		{BA080B21-3F04-48FF-9765-FBAED76ABB2F} = {12E5BA32-E9F3-4E01-9668-8239C7454985}
 		{CC2C4263-9F2C-4525-9F50-2CF634577E63} = {12E5BA32-E9F3-4E01-9668-8239C7454985}
 		{7E1325A1-B392-4F1E-9287-BB10114396CF} = {12E5BA32-E9F3-4E01-9668-8239C7454985}
+		{DE60858C-B395-4F27-9CD8-2A1992BE9842} = {03EA7F48-3D4E-4881-8402-37A60FDC62E7}
 	EndGlobalSection
 EndGlobal
