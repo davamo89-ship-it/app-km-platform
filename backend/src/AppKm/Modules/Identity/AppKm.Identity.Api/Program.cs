@@ -63,6 +63,30 @@ if (!builder.Environment.IsDevelopment())
         throw new InvalidOperationException(
             "Production configuration requires Jwt:Secret.");
     }
+
+    if (Encoding.UTF8.GetByteCount(productionJwtSecret) < 32)
+    {
+        throw new InvalidOperationException(
+            "Production Jwt:Secret must contain at least 32 UTF-8 bytes.");
+    }
+
+    string? productionJwtIssuer =
+        builder.Configuration["Jwt:Issuer"];
+
+    string? productionJwtAudience =
+        builder.Configuration["Jwt:Audience"];
+
+    if (string.IsNullOrWhiteSpace(productionJwtIssuer))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Issuer.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionJwtAudience))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Audience.");
+    }
 }
 
 builder.Services.AddIdentityInfrastructure(

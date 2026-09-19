@@ -64,10 +64,76 @@ if (!builder.Environment.IsDevelopment())
             "Production configuration requires Jwt:Secret.");
     }
 
-    if (string.IsNullOrWhiteSpace(productionFirebaseProjectId))
+    if (Encoding.UTF8.GetByteCount(productionJwtSecret) < 32)
+    {
+        throw new InvalidOperationException(
+            "Production Jwt:Secret must contain at least 32 UTF-8 bytes.");
+    }
+
+    string? productionJwtIssuer =
+        builder.Configuration["Jwt:Issuer"];
+
+    string? productionJwtAudience =
+        builder.Configuration["Jwt:Audience"];
+
+    if (string.IsNullOrWhiteSpace(productionJwtIssuer))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Issuer.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionJwtAudience))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Jwt:Audience.");
+    }
+
+    if (string.IsNullOrWhiteSpace(productionFirebaseProjectId) ||
+        productionFirebaseProjectId.StartsWith(
+            "REPLACE_",
+            StringComparison.OrdinalIgnoreCase))
     {
         throw new InvalidOperationException(
             "Production configuration requires Firebase:ProjectId.");
+    }
+
+    string? stravaClientId =
+        builder.Configuration["Strava:ClientId"];
+
+    string? stravaClientSecret =
+        builder.Configuration["Strava:ClientSecret"];
+
+    string? stravaRedirectUri =
+        builder.Configuration["Strava:RedirectUri"];
+
+    if (string.IsNullOrWhiteSpace(stravaClientId) ||
+        stravaClientId == "0" ||
+        stravaClientId.StartsWith(
+            "REPLACE_",
+            StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires a valid Strava:ClientId.");
+    }
+
+    if (string.IsNullOrWhiteSpace(stravaClientSecret) ||
+        stravaClientSecret.StartsWith(
+            "REPLACE_",
+            StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "Production configuration requires Strava:ClientSecret.");
+    }
+
+    if (string.IsNullOrWhiteSpace(stravaRedirectUri) ||
+        stravaRedirectUri.Contains(
+            "REPLACE_",
+            StringComparison.OrdinalIgnoreCase) ||
+        !Uri.TryCreate(stravaRedirectUri, UriKind.Absolute, out Uri? parsedStravaRedirectUri) ||
+        parsedStravaRedirectUri.Scheme != Uri.UriSchemeHttps)
+    {
+        throw new InvalidOperationException(
+            "Production Strava:RedirectUri must be an absolute HTTPS URL.");
     }
 }
 
