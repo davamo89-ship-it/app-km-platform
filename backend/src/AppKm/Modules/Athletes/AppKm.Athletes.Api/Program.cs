@@ -27,6 +27,7 @@ builder.Services.AddScoped<DisconnectStravaCommandHandler>();
 
 
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -184,6 +185,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseExceptionHandler();
 
 app.UseAuthentication();
 app.UseRateLimiter();

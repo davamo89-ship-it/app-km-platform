@@ -34,6 +34,7 @@ builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -149,7 +150,7 @@ builder.Services
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false;
-        options.IncludeErrorDetails = true;
+        options.IncludeErrorDetails = false;
 
         options.TokenValidationParameters =
             new TokenValidationParameters
@@ -172,25 +173,6 @@ builder.Services
                 RoleClaimType = "role",
             };
 
-        options.Events = new JwtBearerEvents
-        {
-            OnAuthenticationFailed = context =>
-            {
-                Console.WriteLine(
-                    $"JWT authentication failed: " +
-                    $"{context.Exception.GetType().Name} - " +
-                    $"{context.Exception.Message}");
-
-                return Task.CompletedTask;
-            },
-
-            OnTokenValidated = context =>
-            {
-                Console.WriteLine("JWT validated successfully.");
-
-                return Task.CompletedTask;
-            }
-        };
     });
 
 builder.Services.AddAuthorization(options =>
@@ -239,6 +221,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
