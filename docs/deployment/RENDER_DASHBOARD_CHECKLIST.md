@@ -1,0 +1,23 @@
+# Render — checklist de creación de staging
+
+- [ ] GitHub conectado a Render.
+- [ ] Blueprint creado desde `render.yaml`.
+- [ ] Región revisada.
+- [ ] `appkm-staging-postgres` creado.
+- [ ] Identity desplegado.
+- [ ] Athletes desplegado.
+- [ ] Strava ClientId ingresado.
+- [ ] Strava ClientSecret ingresado.
+- [ ] Secret File `firebase-admin.json` agregado a Athletes.
+- [ ] Migraciones Identity aplicadas.
+- [ ] Migraciones Athletes aplicadas.
+- [ ] Identity `/health/live` = 200.
+- [ ] Identity `/health/ready` = 200.
+- [ ] Athletes `/health/live` = 200.
+- [ ] Athletes `/health/ready` = 200.
+- [ ] Callback de Strava registrado.
+- [ ] Flutter iniciado con URLs de staging.
+- [ ] Login probado desde teléfono.
+- [ ] SignalR probado.
+- [ ] FCM probado.
+- [ ] No hay secretos en Git.

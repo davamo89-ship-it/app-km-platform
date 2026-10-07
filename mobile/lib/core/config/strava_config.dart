@@ -12,7 +12,10 @@ class StravaConfig {
     'STRAVA_AUTH_BACKEND_URL',
   );
 
-  static const String redirectUri = 'http://localhost:3000/api/v1/strava/callback';
+  static const String redirectUri = String.fromEnvironment(
+    'STRAVA_REDIRECT_URI',
+    defaultValue: 'http://localhost:3000/api/v1/strava/callback',
+  );
 
   static const String appCallbackScheme = 'appkm';
 

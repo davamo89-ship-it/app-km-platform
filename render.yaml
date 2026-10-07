@@ -1,0 +1,111 @@
+services:
+  - type: web
+    name: appkm-identity-staging
+    runtime: docker
+    region: virginia
+    plan: free
+    branch: main
+    dockerfilePath: ./backend/Dockerfile.Identity
+    dockerContext: ./backend
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Staging
+      - key: ASPNETCORE_HTTP_PORTS
+        value: "10000"
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: Jwt__Issuer
+        value: AppKm.Identity.Api
+      - key: Jwt__Audience
+        value: AppKm.Platform
+      - key: Jwt__Secret
+        fromService:
+          name: appkm-athletes-staging
+          type: web
+          envVarKey: Jwt__Secret
+      - key: Jwt__ExpirationMinutes
+        value: "15"
+      - key: RefreshToken__ExpirationDays
+        value: "30"
+      - key: RefreshToken__SizeInBytes
+        value: "64"
+      - key: RENDER_POSTGRES_HOST
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: host
+      - key: RENDER_POSTGRES_PORT
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: port
+      - key: RENDER_POSTGRES_DATABASE
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: database
+      - key: RENDER_POSTGRES_USER
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: user
+      - key: RENDER_POSTGRES_PASSWORD
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: password
+
+  - type: web
+    name: appkm-athletes-staging
+    runtime: docker
+    region: virginia
+    plan: free
+    branch: main
+    dockerfilePath: ./backend/Dockerfile.Athletes
+    dockerContext: ./backend
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Staging
+      - key: ASPNETCORE_HTTP_PORTS
+        value: "10000"
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: Jwt__Issuer
+        value: AppKm.Identity.Api
+      - key: Jwt__Audience
+        value: AppKm.Platform
+      - key: Jwt__Secret
+        generateValue: true
+      - key: Firebase__ProjectId
+        value: app-km-5e628
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/firebase-admin.json
+      - key: Strava__ClientId
+        sync: false
+      - key: Strava__ClientSecret
+        sync: false
+      - key: RENDER_POSTGRES_HOST
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: host
+      - key: RENDER_POSTGRES_PORT
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: port
+      - key: RENDER_POSTGRES_DATABASE
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: database
+      - key: RENDER_POSTGRES_USER
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: user
+      - key: RENDER_POSTGRES_PASSWORD
+        fromDatabase:
+          name: appkm-staging-postgres
+          property: password
+
+databases:
+  - name: appkm-staging-postgres
+    region: virginia
+    plan: free
+    postgresMajorVersion: "16"
+    databaseName: appkm
+    user: appkm

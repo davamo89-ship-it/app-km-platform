@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using AppKm.Identity.Api.Observability;
 using Platform.SharedKernel.Observability;
+using Platform.SharedKernel.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
@@ -22,6 +23,9 @@ using AppKm.Identity.Domain.Aggregates.Roles;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+RenderEnvironmentConfiguration.Apply(
+    builder.Configuration);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -473,4 +477,3 @@ static bool IsValidCorrelationId(
             char.IsLetterOrDigit(character) ||
             character is '-' or '_' or '.');
 }
-
