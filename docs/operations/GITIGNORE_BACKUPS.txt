@@ -1,0 +1,4 @@
+# Agregar al .gitignore si aún no existe:
+backups/
+*.dump
+*.dump.sha256

@@ -50,7 +50,7 @@ public sealed class AthletesApiFactory : WebApplicationFactory<Program>
                                 "test-health",
                                 _ => new AlwaysHealthyCheck(),
                                 HealthStatus.Unhealthy,
-                                tags: null));
+                                tags: new[] { "ready" }));
                     });
             });
     }

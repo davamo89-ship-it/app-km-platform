@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using AppKm.Athletes.Api.Observability;
+using Platform.SharedKernel.Observability;
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
@@ -167,6 +170,9 @@ builder.Services.AddScoped<GetStravaConnectionStatusQueryHandler>();
 builder.Services.AddScoped<DisconnectStravaCommandHandler>();
 
 
+builder.Services.AddSingleton(
+    new OperationalMetrics("AppKm.Athletes.Api"));
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
@@ -328,10 +334,12 @@ builder.Services
     .AddHealthChecks()
     .AddNpgSql(
         athleteDatabaseConnectionString,
-        name: "athletes-postgresql")
+        name: "athletes-postgresql",
+        tags: new[] { "ready" })
     .AddNpgSql(
         identityDatabaseConnectionString,
-        name: "identity-postgresql");
+        name: "identity-postgresql",
+        tags: new[] { "ready" });
 
 var app = builder.Build();
 
@@ -340,16 +348,35 @@ ILogger requestLogger =
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("AppKm.Request");
 
+OperationalMetrics operationalMetrics =
+    app.Services
+        .GetRequiredService<OperationalMetrics>();
+
 app.Use(async (context, next) =>
 {
+    string? requestedCorrelationId =
+        context.Request.Headers["X-Correlation-ID"]
+            .FirstOrDefault();
+
     string correlationId =
-        context.TraceIdentifier;
+        IsValidCorrelationId(requestedCorrelationId)
+            ? requestedCorrelationId!
+            : context.TraceIdentifier;
+
+    context.TraceIdentifier =
+        correlationId;
 
     context.Response.Headers["X-Correlation-ID"] =
         correlationId;
 
+    Activity.Current?.SetTag(
+        "appkm.correlation_id",
+        correlationId);
+
     var stopwatch =
         Stopwatch.StartNew();
+
+    operationalMetrics.RequestStarted();
 
     using IDisposable? scope =
         requestLogger.BeginScope(
@@ -365,9 +392,26 @@ app.Use(async (context, next) =>
     {
         await next();
     }
+    catch (Exception exception)
+    {
+        requestLogger.LogError(
+            exception,
+            "Unhandled request failure for {RequestMethod} {RequestPath}. " +
+            "CorrelationId={CorrelationId}",
+            context.Request.Method,
+            context.Request.Path.Value ?? "/",
+            correlationId);
+
+        throw;
+    }
     finally
     {
         stopwatch.Stop();
+
+        operationalMetrics.RequestCompleted(
+            context.Response.StatusCode,
+            stopwatch.Elapsed,
+            DateTimeOffset.UtcNow);
 
         requestLogger.LogInformation(
             "HTTP {RequestMethod} {RequestPath} responded {StatusCode} " +
@@ -407,7 +451,59 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
+app.MapHealthChecks(
+    "/health/live",
+    new HealthCheckOptions
+    {
+        Predicate = _ => false,
+        ResponseWriter =
+            HealthResponseWriter.WriteAsync
+    });
+
+app.MapHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions
+    {
+        Predicate =
+            registration =>
+                registration.Tags.Contains("ready"),
+        ResponseWriter =
+            HealthResponseWriter.WriteAsync
+    });
+
+app.MapHealthChecks(
+    "/health",
+    new HealthCheckOptions
+    {
+        Predicate =
+            registration =>
+                registration.Tags.Contains("ready"),
+        ResponseWriter =
+            HealthResponseWriter.WriteAsync
+    });
+
+app.MapGet(
+        "/ops/metrics",
+        (OperationalMetrics metrics) =>
+            Results.Ok(
+                metrics.GetSnapshot()))
+    .ExcludeFromDescription();
 app.MapHub<RedemptionHub>(RedemptionHub.Path);
 
 app.Run();
+
+static bool IsValidCorrelationId(
+    string? value)
+{
+    if (string.IsNullOrWhiteSpace(value) ||
+        value.Length > 128)
+    {
+        return false;
+    }
+
+    return value.All(
+        character =>
+            char.IsLetterOrDigit(character) ||
+            character is '-' or '_' or '.');
+}
+

@@ -158,4 +158,104 @@ public sealed class AthletesApiSmokeTests
                 .GetValues("X-Frame-Options")
                 .Single());
     }
+
+    [Fact]
+    public async Task HealthLive_ReturnsStructuredHealthyResponse()
+    {
+        HttpResponseMessage response =
+            await _client.GetAsync("/health/live");
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        string body =
+            await response.Content.ReadAsStringAsync();
+
+        Assert.Contains(
+            "\"status\":\"Healthy\"",
+            body,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HealthReady_ReturnsStructuredHealthyResponse()
+    {
+        HttpResponseMessage response =
+            await _client.GetAsync("/health/ready");
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        string body =
+            await response.Content.ReadAsStringAsync();
+
+        Assert.Contains(
+            "\"status\":\"Healthy\"",
+            body,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OperationsMetrics_ReturnsServiceAndRequestCounters()
+    {
+        HttpResponseMessage response =
+            await _client.GetAsync("/ops/metrics");
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        string body =
+            await response.Content.ReadAsStringAsync();
+
+        Assert.Contains(
+            "AppKm.Athletes.Api",
+            body,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "totalRequests",
+            body,
+            StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains(
+            "serverErrorRequests",
+            body,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidClientCorrelationId_IsPreserved()
+    {
+        const string correlationId =
+            "appkm-test-correlation-123";
+
+        using var request =
+            new HttpRequestMessage(
+                HttpMethod.Get,
+                "/health/live");
+
+        request.Headers.Add(
+            "X-Correlation-ID",
+            correlationId);
+
+        HttpResponseMessage response =
+            await _client.SendAsync(request);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        Assert.True(
+            response.Headers.TryGetValues(
+                "X-Correlation-ID",
+                out IEnumerable<string>? values));
+
+        Assert.Equal(
+            correlationId,
+            values!.Single());
+    }
+
 }
