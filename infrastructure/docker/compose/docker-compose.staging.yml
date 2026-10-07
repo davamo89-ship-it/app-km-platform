@@ -1,0 +1,94 @@
+name: appkm-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${APPKM_STAGING_POSTGRES_DB:?required}
+      POSTGRES_USER: ${APPKM_STAGING_POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${APPKM_STAGING_POSTGRES_PASSWORD:?required}
+    ports:
+      - "${APPKM_STAGING_POSTGRES_PORT:-55433}:5432"
+    volumes:
+      - appkm-staging-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${APPKM_STAGING_POSTGRES_USER:?required} -d ${APPKM_STAGING_POSTGRES_DB:?required}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  identity-api:
+    build:
+      context: ../../../backend
+      dockerfile: Dockerfile.Identity
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+      AllowedHosts: ${APPKM_IDENTITY_HOST:?required}
+
+      ConnectionStrings__IdentityDatabase: >-
+        Host=postgres;Port=5432;Database=${APPKM_STAGING_POSTGRES_DB:?required};Username=${APPKM_STAGING_POSTGRES_USER:?required};Password=${APPKM_STAGING_POSTGRES_PASSWORD:?required}
+      ConnectionStrings__AthleteDatabase: >-
+        Host=postgres;Port=5432;Database=${APPKM_STAGING_POSTGRES_DB:?required};Username=${APPKM_STAGING_POSTGRES_USER:?required};Password=${APPKM_STAGING_POSTGRES_PASSWORD:?required}
+
+      Jwt__Issuer: AppKm.Identity.Api
+      Jwt__Audience: AppKm.Platform
+      Jwt__Secret: ${APPKM_JWT_SECRET:?required}
+      Jwt__ExpirationMinutes: 15
+
+      RefreshToken__ExpirationDays: 30
+      RefreshToken__SizeInBytes: 64
+    ports:
+      - "5264:8080"
+
+  athletes-api:
+    build:
+      context: ../../../backend
+      dockerfile: Dockerfile.Athletes
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+      AllowedHosts: ${APPKM_ATHLETES_HOST:?required}
+
+      ConnectionStrings__IdentityDatabase: >-
+        Host=postgres;Port=5432;Database=${APPKM_STAGING_POSTGRES_DB:?required};Username=${APPKM_STAGING_POSTGRES_USER:?required};Password=${APPKM_STAGING_POSTGRES_PASSWORD:?required}
+      ConnectionStrings__AthleteDatabase: >-
+        Host=postgres;Port=5432;Database=${APPKM_STAGING_POSTGRES_DB:?required};Username=${APPKM_STAGING_POSTGRES_USER:?required};Password=${APPKM_STAGING_POSTGRES_PASSWORD:?required}
+
+      Jwt__Issuer: AppKm.Identity.Api
+      Jwt__Audience: AppKm.Platform
+      Jwt__Secret: ${APPKM_JWT_SECRET:?required}
+
+      Firebase__ProjectId: ${APPKM_FIREBASE_PROJECT_ID:?required}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-admin.json
+
+      Strava__ClientId: ${APPKM_STRAVA_CLIENT_ID:?required}
+      Strava__ClientSecret: ${APPKM_STRAVA_CLIENT_SECRET:?required}
+      Strava__RedirectUri: https://${APPKM_ATHLETES_HOST:?required}/api/v1/athletes/strava/callback
+    volumes:
+      - type: bind
+        source: ${APPKM_FIREBASE_CREDENTIALS_FILE:?required}
+        target: /run/secrets/firebase-admin.json
+        read_only: true
+    ports:
+      - "5208:8080"
+
+volumes:
+  appkm-staging-postgres:

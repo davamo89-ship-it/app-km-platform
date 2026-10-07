@@ -1,0 +1,65 @@
+name: Deployment Artifacts CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "backend/**"
+      - "infrastructure/docker/**"
+      - "scripts/deployment/**"
+      - ".github/workflows/deployment-ci.yml"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "backend/**"
+      - "infrastructure/docker/**"
+      - "scripts/deployment/**"
+      - ".github/workflows/deployment-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-containers:
+    name: Validate Deployment Containers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate staging compose
+        env:
+          APPKM_STAGING_POSTGRES_DB: appkm
+          APPKM_STAGING_POSTGRES_USER: appkm
+          APPKM_STAGING_POSTGRES_PASSWORD: ci-only-password
+          APPKM_IDENTITY_HOST: identity.staging.example.com
+          APPKM_ATHLETES_HOST: athletes.staging.example.com
+          APPKM_JWT_SECRET: ci-only-jwt-secret-at-least-32-bytes-long
+          APPKM_FIREBASE_PROJECT_ID: app-km-ci
+          APPKM_FIREBASE_CREDENTIALS_FILE: /tmp/firebase-admin.json
+          APPKM_STRAVA_CLIENT_ID: "12345"
+          APPKM_STRAVA_CLIENT_SECRET: ci-only-strava-secret
+        run: |
+          docker compose \
+            -f infrastructure/docker/compose/docker-compose.staging.yml \
+            config --quiet
+
+      - name: Build Identity API image
+        run: |
+          docker build \
+            -f backend/Dockerfile.Identity \
+            -t appkm-identity-api:ci \
+            backend
+
+      - name: Build Athletes API image
+        run: |
+          docker build \
+            -f backend/Dockerfile.Athletes \
+            -t appkm-athletes-api:ci \
+            backend
