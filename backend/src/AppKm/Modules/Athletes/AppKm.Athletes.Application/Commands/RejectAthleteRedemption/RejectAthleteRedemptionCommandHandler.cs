@@ -4,7 +4,6 @@ using AppKm.Athletes.Domain.Aggregates.RedemptionRequests;
 using Platform.SharedKernel.Errors;
 using Platform.SharedKernel.Results;
 
-
 namespace AppKm.Athletes.Application.Commands.RejectAthleteRedemption;
 
 public sealed class RejectAthleteRedemptionCommandHandler
@@ -23,7 +22,19 @@ public sealed class RejectAthleteRedemptionCommandHandler
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<Result<RejectAthleteRedemptionResult>> HandleAsync(
+    public Task<Result<RejectAthleteRedemptionResult>> HandleAsync(
+        RejectAthleteRedemptionCommand command,
+        CancellationToken cancellationToken)
+    {
+        return _unitOfWork.ExecuteSerializableAsync(
+            innerCancellationToken =>
+                HandleCoreAsync(
+                    command,
+                    innerCancellationToken),
+            cancellationToken);
+    }
+
+    private async Task<Result<RejectAthleteRedemptionResult>> HandleCoreAsync(
         RejectAthleteRedemptionCommand command,
         CancellationToken cancellationToken)
     {

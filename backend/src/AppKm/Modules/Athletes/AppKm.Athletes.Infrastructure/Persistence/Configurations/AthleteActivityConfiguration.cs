@@ -52,16 +52,19 @@ internal sealed class AthleteActivityConfiguration
         builder.Property(activity =>
                  activity.Points)
             .HasColumnName("points")
-            .IsRequired();    
+            .IsRequired();
 
         builder.Property(activity =>
                 activity.StartDateUtc)
             .HasColumnName("start_date_utc")
             .IsRequired();
 
+        // Strava start_date_local is a wall-clock value without an offset.
+        // Persist it as PostgreSQL timestamp without time zone.
         builder.Property(activity =>
                 activity.StartDateLocal)
             .HasColumnName("start_date_local")
+            .HasColumnType("timestamp without time zone")
             .IsRequired();
 
         builder.Property(activity =>

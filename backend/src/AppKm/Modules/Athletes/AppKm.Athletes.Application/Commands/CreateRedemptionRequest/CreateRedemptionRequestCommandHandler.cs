@@ -31,18 +31,31 @@ public sealed class CreateRedemptionRequestCommandHandler
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<Result<CreateRedemptionRequestResult>> HandleAsync(
+    public Task<Result<CreateRedemptionRequestResult>> HandleAsync(
         CreateRedemptionRequestCommand command,
         CancellationToken cancellationToken)
     {
         if (command.RequestedPoints <= 0)
         {
-            return Result<CreateRedemptionRequestResult>.Failure(
-                new Error(
-                    "Athletes.Redemption.InvalidPoints",
-                    "Requested points must be greater than zero."));
+            return Task.FromResult(
+                Result<CreateRedemptionRequestResult>.Failure(
+                    new Error(
+                        "Athletes.Redemption.InvalidPoints",
+                        "Requested points must be greater than zero.")));
         }
 
+        return _unitOfWork.ExecuteSerializableAsync(
+            innerCancellationToken =>
+                HandleCoreAsync(
+                    command,
+                    innerCancellationToken),
+            cancellationToken);
+    }
+
+    private async Task<Result<CreateRedemptionRequestResult>> HandleCoreAsync(
+        CreateRedemptionRequestCommand command,
+        CancellationToken cancellationToken)
+    {
         Athlete? athlete =
             await _athleteRepository.GetByUserIdAsync(
                 command.UserId,
@@ -56,8 +69,8 @@ public sealed class CreateRedemptionRequestCommandHandler
                     "The athlete profile was not found."));
         }
 
-       DateTimeOffset now =
-           DateTimeOffset.UtcNow;
+        DateTimeOffset now =
+            DateTimeOffset.UtcNow;
 
         int balance =
             await _pointTransactionRepository.GetBalanceAsync(
@@ -89,7 +102,7 @@ public sealed class CreateRedemptionRequestCommandHandler
         }
         while (await _redemptionRequestRepository.ExistsByCodeAsync(
             code,
-            cancellationToken));       
+            cancellationToken));
 
         DateTimeOffset expiresAtUtc =
             now.Add(CodeLifetime);

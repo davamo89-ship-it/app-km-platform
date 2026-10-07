@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.31" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -20,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AppKm\Modules\Athletes\AppKm.Athletes.Api\AppKm.Athletes.Api.csproj" />
+    <ProjectReference Include="..\..\src\AppKm\Modules\Athletes\AppKm.Athletes.Application\AppKm.Athletes.Application.csproj" />
+    <ProjectReference Include="..\..\src\AppKm\Modules\Athletes\AppKm.Athletes.Domain\AppKm.Athletes.Domain.csproj" />
+    <ProjectReference Include="..\..\src\AppKm\Modules\Athletes\AppKm.Athletes.Infrastructure\AppKm.Athletes.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

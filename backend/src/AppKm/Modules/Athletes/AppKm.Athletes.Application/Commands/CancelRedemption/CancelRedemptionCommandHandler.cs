@@ -22,7 +22,19 @@ public sealed class CancelRedemptionCommandHandler
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<Result<CancelRedemptionResult>> HandleAsync(
+    public Task<Result<CancelRedemptionResult>> HandleAsync(
+        CancelRedemptionCommand command,
+        CancellationToken cancellationToken)
+    {
+        return _unitOfWork.ExecuteSerializableAsync(
+            innerCancellationToken =>
+                HandleCoreAsync(
+                    command,
+                    innerCancellationToken),
+            cancellationToken);
+    }
+
+    private async Task<Result<CancelRedemptionResult>> HandleCoreAsync(
         CancelRedemptionCommand command,
         CancellationToken cancellationToken)
     {
