@@ -4,4 +4,7 @@ public sealed record SyncStravaActivitiesResult(
     int Retrieved,
     int Saved,
     int SkippedInvalid,
-    int SkippedDuplicate);
+    int SkippedDuplicate,
+    int SkippedReview,
+    int SkippedIneligible,
+    IReadOnlyList<ActivitySyncDecision> Decisions);

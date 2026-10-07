@@ -95,7 +95,23 @@ internal sealed class StravaActivitiesClient
                     activity.StartDate,
                     activity.StartDateLocal,
                     activity.ElapsedTime,
-                    activity.MovingTime))
+                    activity.MovingTime,
+                    activity.Manual,
+                    activity.Flagged,
+                    activity.AverageSpeed,
+                    activity.MaxSpeed,
+                    activity.TotalElevationGain,
+                    activity.ElevationHigh,
+                    activity.ElevationLow,
+                    activity.HasHeartRate,
+                    activity.DeviceWatts,
+                    activity.AverageWatts,
+                    activity.AverageHeartRate,
+                    activity.AverageCadence,
+                    activity.DeviceName,
+                    activity.Trainer,
+                    activity.UploadId,
+                    activity.ExternalId))
             .ToList();
     }
 
@@ -122,5 +138,53 @@ internal sealed class StravaActivitiesClient
         int ElapsedTime,
 
         [property: JsonPropertyName("moving_time")]
-        int MovingTime);
+        int MovingTime,
+
+        [property: JsonPropertyName("manual")]
+        bool Manual,
+
+        [property: JsonPropertyName("flagged")]
+        bool Flagged,
+
+        [property: JsonPropertyName("average_speed")]
+        double? AverageSpeed,
+
+        [property: JsonPropertyName("max_speed")]
+        double? MaxSpeed,
+
+        [property: JsonPropertyName("total_elevation_gain")]
+        double? TotalElevationGain,
+
+        [property: JsonPropertyName("elev_high")]
+        double? ElevationHigh,
+
+        [property: JsonPropertyName("elev_low")]
+        double? ElevationLow,
+
+        [property: JsonPropertyName("has_heartrate")]
+        bool HasHeartRate,
+
+        [property: JsonPropertyName("device_watts")]
+        bool DeviceWatts,
+
+        [property: JsonPropertyName("average_watts")]
+        double? AverageWatts,
+
+        [property: JsonPropertyName("average_heartrate")]
+        double? AverageHeartRate,
+
+        [property: JsonPropertyName("average_cadence")]
+        double? AverageCadence,
+
+        [property: JsonPropertyName("device_name")]
+        string? DeviceName,
+
+        [property: JsonPropertyName("trainer")]
+        bool Trainer,
+
+        [property: JsonPropertyName("upload_id")]
+        long? UploadId,
+
+        [property: JsonPropertyName("external_id")]
+        string? ExternalId);
 }

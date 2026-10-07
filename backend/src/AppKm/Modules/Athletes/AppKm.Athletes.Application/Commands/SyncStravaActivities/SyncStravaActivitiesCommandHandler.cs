@@ -1,11 +1,13 @@
 using AppKm.Athletes.Application.Activities;
 using AppKm.Athletes.Application.Interfaces;
+using AppKm.Athletes.Domain.Activities;
 using AppKm.Athletes.Domain.Aggregates.Athletes;
 using AppKm.Athletes.Domain.Aggregates.AthleteActivities;
 using AppKm.Athletes.Domain.Aggregates.StravaConnections;
+using AppKm.Athletes.Domain.Aggregates.PointTransactions;
 using Platform.SharedKernel.Errors;
 using Platform.SharedKernel.Results;
-using AppKm.Athletes.Domain.Aggregates.PointTransactions;
+
 
 namespace AppKm.Athletes.Application.Commands.SyncStravaActivities;
 
@@ -17,17 +19,19 @@ public sealed class SyncStravaActivitiesCommandHandler
     private readonly IStravaActivitiesClient _activitiesClient;
     private readonly IAthleteActivityRepository _activityRepository;
     private readonly IAthleteUnitOfWork _unitOfWork;
-    private readonly IPointTransactionRepository
-    _pointTransactionRepository;
+    private readonly IPointTransactionRepository _pointTransactionRepository;
 
     private readonly StravaActivityValidator _validator =
         new();
 
     private readonly StravaActivityNormalizer _normalizer =
         new();
-    
+
     private readonly ActivityPointsCalculator _pointsCalculator =
-         new();
+        new();
+
+    private readonly ActivityFraudEvaluator _fraudEvaluator =
+        new();
 
     public SyncStravaActivitiesCommandHandler(
         IAthleteRepository athleteRepository,
@@ -108,9 +112,19 @@ public sealed class SyncStravaActivitiesCommandHandler
                 100,
                 cancellationToken);
 
+        IReadOnlyList<AthleteActivity> history =
+            await _activityRepository.GetAllByAthleteAsync(
+                athlete.Id,
+                cancellationToken);
+
         int saved = 0;
         int skippedInvalid = 0;
         int skippedDuplicate = 0;
+        int skippedReview = 0;
+        int skippedIneligible = 0;
+
+        var decisions =
+            new List<ActivitySyncDecision>();
 
         foreach (StravaActivityResult activity in activities)
         {
@@ -122,6 +136,19 @@ public sealed class SyncStravaActivitiesCommandHandler
             if (!validation.IsValid)
             {
                 skippedInvalid++;
+
+                decisions.Add(
+                    new ActivitySyncDecision(
+                        activity.Id,
+                        ActivityFraudStatus.Invalid.ToString(),
+                        0,
+                        100,
+                        new[]
+                        {
+                            validation.Reason ??
+                            "BaseValidationFailed"
+                        }));
+
                 continue;
             }
 
@@ -135,6 +162,52 @@ public sealed class SyncStravaActivitiesCommandHandler
             if (alreadyExists)
             {
                 skippedDuplicate++;
+
+                decisions.Add(
+                    new ActivitySyncDecision(
+                        activity.Id,
+                        ActivityFraudStatus.Ineligible.ToString(),
+                        100,
+                        100,
+                        new[] { "DuplicateActivity" }));
+
+                continue;
+            }
+
+            AppKmActivityType activityType =
+                StravaSportTypeMapper.Map(activity.SportType)!.Value;
+
+            ActivityFraudAssessment fraudAssessment =
+                _fraudEvaluator.Evaluate(
+                    activity,
+                    activityType,
+                    history);
+
+            if (!fraudAssessment.EligibleForPoints)
+            {
+                switch (fraudAssessment.Status)
+                {
+                    case ActivityFraudStatus.Review:
+                        skippedReview++;
+                        break;
+
+                    case ActivityFraudStatus.Ineligible:
+                        skippedIneligible++;
+                        break;
+
+                    default:
+                        skippedInvalid++;
+                        break;
+                }
+
+                decisions.Add(
+                    new ActivitySyncDecision(
+                        activity.Id,
+                        fraudAssessment.Status.ToString(),
+                        fraudAssessment.EvidenceScore,
+                        fraudAssessment.FraudRiskScore,
+                        fraudAssessment.Reasons));
+
                 continue;
             }
 
@@ -163,29 +236,29 @@ public sealed class SyncStravaActivitiesCommandHandler
                 entity,
                 cancellationToken);
 
-                if (entity.Points > 0)
-        {
-            bool earnedAlreadyExists =
-                await _pointTransactionRepository
-                    .ExistsEarnedForActivityAsync(
-                        athlete.Id.Value,
-                        entity.Id.Value,
-                        cancellationToken);
-
-            if (!earnedAlreadyExists)
+            if (entity.Points > 0)
             {
-                PointTransaction transaction =
-                    PointTransaction.CreateEarned(
-                        athlete.Id.Value,
-                        entity.Id.Value,
-                        entity.Points,
-                        DateTimeOffset.UtcNow);
+                bool earnedAlreadyExists =
+                    await _pointTransactionRepository
+                        .ExistsEarnedForActivityAsync(
+                            athlete.Id.Value,
+                            entity.Id.Value,
+                            cancellationToken);
 
-                await _pointTransactionRepository.AddAsync(
-                    transaction,
-                    cancellationToken);
+                if (!earnedAlreadyExists)
+                {
+                    PointTransaction transaction =
+                        PointTransaction.CreateEarned(
+                            athlete.Id.Value,
+                            entity.Id.Value,
+                            entity.Points,
+                            DateTimeOffset.UtcNow);
+
+                    await _pointTransactionRepository.AddAsync(
+                        transaction,
+                        cancellationToken);
+                }
             }
-        }
 
             saved++;
         }
@@ -198,6 +271,9 @@ public sealed class SyncStravaActivitiesCommandHandler
                 activities.Count,
                 saved,
                 skippedInvalid,
-                skippedDuplicate));
+                skippedDuplicate,
+                skippedReview,
+                skippedIneligible,
+                decisions));
     }
 }
