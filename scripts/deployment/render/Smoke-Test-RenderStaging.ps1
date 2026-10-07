@@ -9,6 +9,59 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-HealthCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Url
+    )
+
+    Write-Host "GET $Url"
+
+    try {
+        $response =
+            Invoke-WebRequest `
+                -Uri $Url `
+                -Method Get `
+                -UseBasicParsing `
+                -TimeoutSec 90
+
+        $statusCode =
+            [int]$response.StatusCode
+    }
+    catch {
+        $webResponse =
+            $_.Exception.Response
+
+        if ($null -ne $webResponse) {
+            try {
+                $statusCode =
+                    [int]$webResponse.StatusCode.value__
+            }
+            catch {
+                $statusCode = $null
+            }
+        }
+        else {
+            $statusCode = $null
+        }
+
+        if ($null -ne $statusCode) {
+            throw "$Name devolvió HTTP $statusCode."
+        }
+
+        throw "$Name falló: $($_.Exception.Message)"
+    }
+
+    if ($statusCode -ne 200) {
+        throw "$Name devolvió HTTP $statusCode."
+    }
+
+    Write-Host "OK - $Name"
+}
+
 $targets = @(
     @{
         Name = "Identity liveness"
@@ -29,20 +82,9 @@ $targets = @(
 )
 
 foreach ($target in $targets) {
-    Write-Host "GET $($target.Url)"
-
-    $response =
-        Invoke-WebRequest `
-            -Uri $target.Url `
-            -Method Get `
-            -SkipHttpErrorCheck `
-            -TimeoutSec 90
-
-    if ($response.StatusCode -ne 200) {
-        throw "$($target.Name) devolvió HTTP $($response.StatusCode)."
-    }
-
-    Write-Host "OK - $($target.Name)"
+    Invoke-HealthCheck `
+        -Name $target.Name `
+        -Url $target.Url
 }
 
 Write-Host ""
