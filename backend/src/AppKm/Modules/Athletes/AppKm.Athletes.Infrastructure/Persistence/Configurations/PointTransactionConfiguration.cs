@@ -63,5 +63,21 @@ internal sealed class PointTransactionConfiguration
             .IsUnique()
             .HasDatabaseName(
                 "UX_point_transactions_athlete_activity_type");
+
+        builder.HasIndex(transaction => new
+            {
+                transaction.AthleteId,
+                transaction.Type
+            })
+            .HasDatabaseName(
+                "IX_point_transactions_athlete_id_type");
+
+        builder.HasIndex(transaction => new
+            {
+                transaction.AthleteId,
+                transaction.CreatedAtUtc
+            })
+            .HasDatabaseName(
+                "IX_point_transactions_athlete_id_created_at_utc");
     }
 }

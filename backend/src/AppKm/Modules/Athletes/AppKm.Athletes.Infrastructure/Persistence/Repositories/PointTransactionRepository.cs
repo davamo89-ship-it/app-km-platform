@@ -37,48 +37,30 @@ internal sealed class PointTransactionRepository
             cancellationToken);
     }
 
-    public async Task<int> GetBalanceAsync(
-    Guid athleteId,
-    CancellationToken cancellationToken)
-{
-    int earned =
-        await _dbContext.PointTransactions
+    public Task<int> GetBalanceAsync(
+        Guid athleteId,
+        CancellationToken cancellationToken)
+    {
+        return _dbContext.PointTransactions
             .Where(transaction =>
-                transaction.AthleteId == athleteId &&
-                transaction.Type == PointTransactionType.Earned)
+                transaction.AthleteId == athleteId)
             .SumAsync(
-                transaction => (int?)transaction.Points,
-                cancellationToken)
-        ?? 0;
-
-    int redeemed =
-        await _dbContext.PointTransactions
-            .Where(transaction =>
-                transaction.AthleteId == athleteId &&
-                transaction.Type == PointTransactionType.Redeemed)
-            .SumAsync(
-                transaction => (int?)transaction.Points,
-                cancellationToken)
-        ?? 0;
-
-    int expired =
-        await _dbContext.PointTransactions
-            .Where(transaction =>
-                transaction.AthleteId == athleteId &&
-                transaction.Type == PointTransactionType.Expired)
-            .SumAsync(
-                transaction => (int?)transaction.Points,
-                cancellationToken)
-        ?? 0;
-
-    return earned - redeemed - expired;
-}
+                transaction =>
+                    transaction.Type == PointTransactionType.Earned
+                        ? transaction.Points
+                        : transaction.Type == PointTransactionType.Redeemed ||
+                          transaction.Type == PointTransactionType.Expired
+                            ? -transaction.Points
+                            : 0,
+                cancellationToken);
+    }
 
     public async Task<IReadOnlyList<PointTransaction>> GetHistoryAsync(
         Guid athleteId,
         CancellationToken cancellationToken)
     {
         return await _dbContext.PointTransactions
+            .AsNoTracking()
             .Where(transaction =>
                 transaction.AthleteId == athleteId)
             .OrderByDescending(transaction =>
@@ -91,6 +73,7 @@ internal sealed class PointTransactionRepository
         CancellationToken cancellationToken)
     {
         return await _dbContext.PointTransactions
+            .AsNoTracking()
             .Where(transaction =>
                 transaction.AthleteId == athleteId)
             .OrderBy(transaction =>
@@ -102,13 +85,12 @@ internal sealed class PointTransactionRepository
         Guid athleteId,
         Guid athleteActivityId,
         CancellationToken cancellationToken)
-        {
-            return _dbContext.PointTransactions.AnyAsync(
-                transaction =>
-                    transaction.AthleteId == athleteId &&
-                    transaction.AthleteActivityId == athleteActivityId &&
-                    transaction.Type == PointTransactionType.Expired,
-                cancellationToken);
-        }
-
+    {
+        return _dbContext.PointTransactions.AnyAsync(
+            transaction =>
+                transaction.AthleteId == athleteId &&
+                transaction.AthleteActivityId == athleteActivityId &&
+                transaction.Type == PointTransactionType.Expired,
+            cancellationToken);
+    }
 }

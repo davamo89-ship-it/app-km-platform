@@ -57,14 +57,13 @@ public sealed class GetAthleteDashboardQueryHandler
                 athlete.Id.Value,
                 cancellationToken);
 
-        AthleteActivity? latestActivity =
-            await _activityRepository.GetLatestAsync(
-                athlete.Id,
-                cancellationToken);
         IReadOnlyList<AthleteActivity> activities =
             await _activityRepository.GetAllByAthleteAsync(
                 athlete.Id,
                 cancellationToken);
+
+        AthleteActivity? latestActivity =
+            activities.FirstOrDefault();
 
         var transactions =
             await _pointTransactionRepository.GetAllByAthleteAsync(
@@ -115,7 +114,7 @@ public sealed class GetAthleteDashboardQueryHandler
             stravaConnection is not null &&
             stravaConnection.Status ==
                 StravaConnectionStatus.Active;
-        
+
         double totalKilometers =
                 activities.Sum(activity =>
                     activity.DistanceKilometers);

@@ -61,15 +61,9 @@ internal sealed class RedemptionRequestConfiguration
                 request.CompletedAtUtc)
             .HasColumnName("completed_at_utc");
 
-        builder.HasIndex(request =>
-                request.Code)
-            .IsUnique()
-            .HasDatabaseName(
-                "UX_redemption_requests_code");
-
         builder.Property(request =>
-        request.MerchantId)
-              .HasColumnName("merchant_id");
+                request.MerchantId)
+            .HasColumnName("merchant_id");
 
         builder.Property(request =>
                 request.ProposedPoints)
@@ -82,5 +76,37 @@ internal sealed class RedemptionRequestConfiguration
         builder.Property(request =>
                 request.AthleteConfirmedAtUtc)
             .HasColumnName("athlete_confirmed_at_utc");
+
+        builder.HasIndex(request =>
+                request.Code)
+            .IsUnique()
+            .HasDatabaseName(
+                "UX_redemption_requests_code");
+
+        builder.HasIndex(request => new
+            {
+                request.AthleteId,
+                request.CreatedAtUtc
+            })
+            .HasDatabaseName(
+                "IX_redemption_requests_athlete_id_created_at_utc");
+
+        builder.HasIndex(request => new
+            {
+                request.AthleteId,
+                request.Status,
+                request.ExpiresAtUtc
+            })
+            .HasDatabaseName(
+                "IX_redemption_requests_athlete_id_status_expires_at_utc");
+
+        builder.HasIndex(request => new
+            {
+                request.MerchantId,
+                request.MerchantProposedAtUtc,
+                request.CreatedAtUtc
+            })
+            .HasDatabaseName(
+                "IX_redemption_requests_merchant_id_proposed_created_at_utc");
     }
 }

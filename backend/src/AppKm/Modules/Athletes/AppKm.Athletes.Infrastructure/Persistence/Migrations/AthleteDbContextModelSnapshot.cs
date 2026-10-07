@@ -72,6 +72,9 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AthleteId", "StartDateUtc")
+                        .HasDatabaseName("IX_athlete_activities_athlete_id_start_date_utc");
+
                     b.HasIndex("AthleteId", "StravaActivityId")
                         .IsUnique()
                         .HasDatabaseName("UX_athlete_activities_athlete_id_strava_activity_id");
@@ -209,6 +212,12 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AthleteId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_point_transactions_athlete_id_created_at_utc");
+
+                    b.HasIndex("AthleteId", "Type")
+                        .HasDatabaseName("IX_point_transactions_athlete_id_type");
+
                     b.HasIndex("AthleteId", "AthleteActivityId", "Type")
                         .IsUnique()
                         .HasDatabaseName("UX_point_transactions_athlete_activity_type");
@@ -272,9 +281,18 @@ namespace AppKm.Athletes.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AthleteId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_redemption_requests_athlete_id_created_at_utc");
+
+                    b.HasIndex("AthleteId", "Status", "ExpiresAtUtc")
+                        .HasDatabaseName("IX_redemption_requests_athlete_id_status_expires_at_utc");
+
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("UX_redemption_requests_code");
+
+                    b.HasIndex("MerchantId", "MerchantProposedAtUtc", "CreatedAtUtc")
+                        .HasDatabaseName("IX_redemption_requests_merchant_id_proposed_created_at_utc");
 
                     b.ToTable("redemption_requests", "athletes");
                 });

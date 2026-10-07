@@ -87,6 +87,7 @@ internal sealed class RedemptionRequestRepository
         CancellationToken cancellationToken)
     {
         return _dbContext.RedemptionRequests
+            .AsNoTracking()
             .Where(request => request.MerchantId == merchantId)
             .OrderByDescending(request => request.MerchantProposedAtUtc)
             .ThenByDescending(request => request.CreatedAtUtc)
@@ -99,6 +100,7 @@ internal sealed class RedemptionRequestRepository
         CancellationToken cancellationToken)
     {
         return await _dbContext.RedemptionRequests
+            .AsNoTracking()
             .Where(request => request.MerchantId == merchantId)
             .OrderByDescending(request => request.MerchantProposedAtUtc)
             .ThenByDescending(request => request.CreatedAtUtc)

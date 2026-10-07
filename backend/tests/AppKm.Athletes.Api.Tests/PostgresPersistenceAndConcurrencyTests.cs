@@ -530,6 +530,93 @@ public sealed class PostgresPersistenceAndConcurrencyTests
             CancellationToken.None);
     }
 
+
+    [Fact]
+    public async Task PerformanceIndexes_AreCreatedByMigrations()
+    {
+        await _fixture.ResetAsync();
+
+        await using AsyncServiceScope scope =
+            _fixture.Services.CreateAsyncScope();
+
+        AthleteDbContext dbContext =
+            scope.ServiceProvider
+                .GetRequiredService<AthleteDbContext>();
+
+        string[] expectedIndexes =
+        [
+            "IX_athlete_activities_athlete_id_start_date_utc",
+            "IX_point_transactions_athlete_id_type",
+            "IX_point_transactions_athlete_id_created_at_utc",
+            "IX_redemption_requests_athlete_id_created_at_utc",
+            "IX_redemption_requests_athlete_id_status_expires_at_utc",
+            "IX_redemption_requests_merchant_id_proposed_created_at_utc"
+        ];
+
+        List<string> actualIndexes =
+            await dbContext.Database
+                .SqlQueryRaw<string>(
+                    """
+                    SELECT indexname AS "Value"
+                    FROM pg_indexes
+                    WHERE schemaname = 'athletes';
+                    """)
+                .ToListAsync();
+
+        foreach (string expectedIndex in expectedIndexes)
+        {
+            Assert.Contains(
+                expectedIndex,
+                actualIndexes);
+        }
+    }
+
+    [Fact]
+    public async Task PointBalance_QueryReturnsCorrectLedgerBalance()
+    {
+        await _fixture.ResetAsync();
+
+        SeededActors actors =
+            await SeedBalanceAndMerchantAsync(
+                earnedPoints: 100);
+
+        await using (AsyncServiceScope scope =
+            _fixture.Services.CreateAsyncScope())
+        {
+            AthleteDbContext dbContext =
+                scope.ServiceProvider
+                    .GetRequiredService<AthleteDbContext>();
+
+            PointTransaction redeemed =
+                PointTransaction.CreateRedeemed(
+                    actors.AthleteId,
+                    25,
+                    DateTimeOffset.UtcNow);
+
+            await dbContext.PointTransactions.AddAsync(
+                redeemed);
+
+            await dbContext.SaveChangesAsync();
+        }
+
+        await using AsyncServiceScope verificationScope =
+            _fixture.Services.CreateAsyncScope();
+
+        var repository =
+            verificationScope.ServiceProvider
+                .GetRequiredService<
+                    AppKm.Athletes.Application.Interfaces.IPointTransactionRepository>();
+
+        int balance =
+            await repository.GetBalanceAsync(
+                actors.AthleteId,
+                CancellationToken.None);
+
+        Assert.Equal(
+            75,
+            balance);
+    }
+
     private sealed record SeededActors(
         Guid AthleteUserId,
         Guid AthleteId,
