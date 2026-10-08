@@ -61,7 +61,7 @@ public static class IdentityInfrastructureExtensions
 
         services.AddSingleton<
             IPasswordResetEmailSender,
-            SmtpPasswordResetEmailSender>();
+            ResendPasswordResetEmailSender>();
 
         return services;
     }
