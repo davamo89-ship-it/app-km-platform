@@ -2,6 +2,7 @@ using AppKm.Identity.Application.Interfaces;
 using AppKm.Identity.Domain.Aggregates.Users;
 using AppKm.Identity.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
+using EmailValue = AppKm.Identity.Domain.ValueObjects.Email;
 
 namespace AppKm.Identity.Infrastructure.Persistence.Repositories;
 
@@ -15,16 +16,16 @@ internal sealed class UserRepository : IUserRepository
     }
 
     public Task<User?> GetByIdAsync(
-    UserId userId,
-    CancellationToken cancellationToken)
-{
-    return _dbContext.Users.SingleOrDefaultAsync(
-        user => user.Id == userId,
-        cancellationToken);
-}
+        UserId userId,
+        CancellationToken cancellationToken)
+    {
+        return _dbContext.Users.SingleOrDefaultAsync(
+            user => user.Id == userId,
+            cancellationToken);
+    }
 
     public Task<User?> GetByEmailAsync(
-        Email email,
+        EmailValue email,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(email);
@@ -36,7 +37,7 @@ internal sealed class UserRepository : IUserRepository
     }
 
     public Task<bool> ExistsByEmailAsync(
-        Email email,
+        EmailValue email,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(email);

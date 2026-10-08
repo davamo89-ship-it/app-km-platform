@@ -3,6 +3,7 @@ using AppKm.Identity.Infrastructure.Persistence;
 using AppKm.Identity.Infrastructure.Persistence.Repositories;
 using AppKm.Identity.Infrastructure.Security;
 using AppKm.Identity.Infrastructure.Time;
+using AppKm.Identity.Infrastructure.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,18 @@ public static class IdentityInfrastructureExtensions
             configuration.GetSection(RefreshTokenOptions.SectionName));
 
         services.AddSingleton<IRefreshTokenGenerator, RefreshTokenGenerator>();
+
+        services.AddSingleton<
+            IPasswordResetCodeGenerator,
+            PasswordResetCodeGenerator>();
+
+        services.Configure<EmailOptions>(
+            configuration.GetSection(
+                EmailOptions.SectionName));
+
+        services.AddSingleton<
+            IPasswordResetEmailSender,
+            SmtpPasswordResetEmailSender>();
 
         return services;
     }

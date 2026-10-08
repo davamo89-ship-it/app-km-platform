@@ -1,5 +1,6 @@
 using AppKm.Identity.Domain.Aggregates.Users;
 using AppKm.Identity.Domain.ValueObjects;
+using EmailValue = AppKm.Identity.Domain.ValueObjects.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -22,7 +23,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.Email)
             .HasConversion(
                 email => email.Value,
-                value => Email.Create(value).Value)
+                value => EmailValue.Create(value).Value)
             .HasColumnName("email")
             .HasMaxLength(254)
             .IsRequired();
@@ -49,6 +50,16 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.CreatedAtUtc)
             .HasColumnName("created_at_utc")
             .IsRequired();
+
+        builder.Property(user => user.PasswordResetCodeHash)
+            .HasColumnName("password_reset_code_hash")
+            .HasMaxLength(64);
+
+        builder.Property(user => user.PasswordResetRequestedAtUtc)
+            .HasColumnName("password_reset_requested_at_utc");
+
+        builder.Property(user => user.PasswordResetExpiresAtUtc)
+            .HasColumnName("password_reset_expires_at_utc");
 
         builder.Ignore(user => user.DomainEvents);
     }

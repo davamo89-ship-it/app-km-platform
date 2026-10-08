@@ -106,6 +106,42 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _openRegister() async {
+    final result = await Navigator.pushNamed<String>(
+      context,
+      AppRoutes.register,
+      arguments: _emailController.text.trim(),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    _emailController.text = result;
+    _showMessage(
+      'Cuenta creada. Ya puede iniciar sesión.',
+    );
+  }
+
+  Future<void> _openForgotPassword() async {
+    final result = await Navigator.pushNamed<String>(
+      context,
+      AppRoutes.forgotPassword,
+      arguments: _emailController.text.trim(),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    _emailController.text = result;
+    _passwordController.clear();
+
+    _showMessage(
+      'Contraseña actualizada. Inicie sesión con la nueva contraseña.',
+    );
+  }
+
   Future<void> _navigateForRole(
     AppUserRole role,
   ) async {
@@ -325,10 +361,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   return 'Ingresa tu contraseña';
                                 }
 
-                                if (value.length < 6) {
-                                  return 'Debe tener al menos 6 caracteres';
-                                }
-
                                 return null;
                               },
                             ),
@@ -336,11 +368,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               alignment:
                                   Alignment.centerRight,
                               child: TextButton(
-                                onPressed: () {
-                                  _showMessage(
-                                    'Recuperación de contraseña próximamente.',
-                                  );
-                                },
+                                onPressed:
+                                    _isLoggingIn
+                                        ? null
+                                        : _openForgotPassword,
                                 child: const Text(
                                   '¿Olvidaste tu contraseña?',
                                 ),
@@ -391,11 +422,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                   '¿No tienes cuenta?',
                                 ),
                                 TextButton(
-                                  onPressed: () {
-                                    _showMessage(
-                                      'Registro de usuario próximamente.',
-                                    );
-                                  },
+                                  onPressed:
+                                      _isLoggingIn
+                                          ? null
+                                          : _openRegister,
                                   child: const Text(
                                     'Registrarse',
                                   ),

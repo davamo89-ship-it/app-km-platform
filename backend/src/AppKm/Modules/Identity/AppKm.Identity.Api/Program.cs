@@ -18,6 +18,8 @@ using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
 using AppKm.Identity.Application.Commands.RegisterPushDevice;
 using AppKm.Identity.Application.Commands.DeactivatePushDevice;
+using AppKm.Identity.Application.Commands.RequestPasswordReset;
+using AppKm.Identity.Application.Commands.ConfirmPasswordReset;
 using AppKm.Identity.Api.Security;
 using AppKm.Identity.Domain.Aggregates.Roles;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
@@ -109,6 +111,8 @@ builder.Services.AddScoped<RefreshSessionCommandHandler>();
 builder.Services.AddScoped<LogoutSessionCommandHandler>();
 builder.Services.AddScoped<RegisterPushDeviceCommandHandler>();
 builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
+builder.Services.AddScoped<RequestPasswordResetCommandHandler>();
+builder.Services.AddScoped<ConfirmPasswordResetCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddSingleton(
@@ -154,6 +158,22 @@ builder.Services.AddRateLimiter(options =>
                     new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+
+    options.AddPolicy(
+        "identity-password-reset",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey:
+                    context.Connection.RemoteIpAddress?.ToString()
+                    ?? "unknown",
+                factory: _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true

@@ -90,6 +90,10 @@ public sealed class RegisterUserCommandHandler
                 userResult.Error);
         }
 
+        // El MVP todavía no implementa verificación de correo.
+        // Por eso el usuario queda activo inmediatamente después del registro.
+        userResult.Value.Activate();
+
         await _userRepository.AddAsync(
             userResult.Value,
             cancellationToken);

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
+using AppKm.Identity.Application.Commands.RequestPasswordReset;
+using AppKm.Identity.Application.Commands.ConfirmPasswordReset;
 
 namespace AppKm.Identity.Api.Controllers;
 
@@ -19,17 +21,26 @@ public sealed class IdentityController : ControllerBase
     private readonly LoginUserCommandHandler _loginUserHandler;
     private readonly RefreshSessionCommandHandler _refreshSessionHandler;
     private readonly LogoutSessionCommandHandler _logoutSessionHandler;
+    private readonly RequestPasswordResetCommandHandler _requestPasswordResetHandler;
+    private readonly ConfirmPasswordResetCommandHandler _confirmPasswordResetHandler;
+    private readonly ILogger<IdentityController> _logger;
 
     public IdentityController(
         RegisterUserCommandHandler registerUserHandler,
         LoginUserCommandHandler loginUserHandler,
         RefreshSessionCommandHandler refreshSessionHandler,
-        LogoutSessionCommandHandler logoutSessionHandler)
+        LogoutSessionCommandHandler logoutSessionHandler,
+        RequestPasswordResetCommandHandler requestPasswordResetHandler,
+        ConfirmPasswordResetCommandHandler confirmPasswordResetHandler,
+        ILogger<IdentityController> logger)
     {
         _registerUserHandler = registerUserHandler;
         _loginUserHandler = loginUserHandler;
         _refreshSessionHandler = refreshSessionHandler;
         _logoutSessionHandler = logoutSessionHandler;
+        _requestPasswordResetHandler = requestPasswordResetHandler;
+        _confirmPasswordResetHandler = confirmPasswordResetHandler;
+        _logger = logger;
     }
     [HttpGet("status")]
     [ProducesResponseType<IdentityStatusResponse>(
@@ -130,6 +141,63 @@ public sealed class IdentityController : ControllerBase
             result.Value.RefreshTokenExpiresAtUtc);
 
         return Ok(response);
+    }
+
+
+    [HttpPost("password-reset/request")]
+    [EnableRateLimiting("identity-password-reset")]
+    [ProducesResponseType<PasswordResetRequestResponse>(
+        StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> RequestPasswordReset(
+        RequestPasswordResetRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _requestPasswordResetHandler.HandleAsync(
+                new RequestPasswordResetCommand(
+                    request.Email),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // No se devuelve un error específico para no revelar
+            // si el correo corresponde a una cuenta existente.
+            _logger.LogError(
+                exception,
+                "Password reset delivery failed.");
+        }
+
+        return Accepted(
+            new PasswordResetRequestResponse(
+                "Si existe una cuenta con ese correo, recibirás un código para recuperar tu contraseña."));
+    }
+
+    [HttpPost("password-reset/confirm")]
+    [EnableRateLimiting("identity-password-reset")]
+    [ProducesResponseType(
+        StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ErrorResponse>(
+        StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ConfirmPasswordReset(
+        ConfirmPasswordResetRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result =
+            await _confirmPasswordResetHandler.HandleAsync(
+                new ConfirmPasswordResetCommand(
+                    request.Email,
+                    request.Code,
+                    request.NewPassword),
+                cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(
+                ToErrorResponse(result.Error));
+        }
+
+        return NoContent();
     }
 
     [Authorize]

@@ -1,59 +1,96 @@
 import 'package:flutter/material.dart';
 
 import '../../screens/admin/admin_screen.dart';
+import '../../screens/auth/forgot_password_screen.dart';
 import '../../screens/auth/login_screen.dart';
+import '../../screens/auth/register_screen.dart';
 import '../../screens/dashboard/dashboard_screen.dart';
 import '../../screens/splash/splash_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';
+  static const String register = '/register';
+  static const String forgotPassword =
+      '/forgot-password';
   static const String dashboard = '/dashboard';
   static const String admin = '/admin';
 
-  static Route<dynamic> generateRoute(RouteSettings settings) {
+  static Route<dynamic> generateRoute(
+    RouteSettings settings,
+  ) {
     switch (settings.name) {
       case splash:
         return MaterialPageRoute(
-          builder: (_) => const SplashScreen(),
+          builder: (_) =>
+              const SplashScreen(),
           settings: settings,
         );
 
       case login:
         return MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
+          builder: (_) =>
+              const LoginScreen(),
+          settings: settings,
+        );
+
+      case register:
+        return MaterialPageRoute<String>(
+          builder: (_) => RegisterScreen(
+            initialEmail:
+                settings.arguments
+                        as String? ??
+                    '',
+          ),
+          settings: settings,
+        );
+
+      case forgotPassword:
+        return MaterialPageRoute<String>(
+          builder: (_) =>
+              ForgotPasswordScreen(
+            initialEmail:
+                settings.arguments
+                        as String? ??
+                    '',
+          ),
           settings: settings,
         );
 
       case dashboard:
         return MaterialPageRoute(
-          builder: (_) => const DashboardScreen(),
+          builder: (_) =>
+              const DashboardScreen(),
           settings: settings,
         );
 
       case admin:
         return MaterialPageRoute(
-          builder: (_) => const AdminScreen(),
+          builder: (_) =>
+              const AdminScreen(),
           settings: settings,
         );
 
       default:
         return MaterialPageRoute(
-          builder: (_) => const _RouteNotFoundScreen(),
+          builder: (_) =>
+              const _RouteNotFoundScreen(),
           settings: settings,
         );
     }
   }
 }
 
-class _RouteNotFoundScreen extends StatelessWidget {
+class _RouteNotFoundScreen
+    extends StatelessWidget {
   const _RouteNotFoundScreen();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ruta no encontrada'),
+        title:
+            const Text('Ruta no encontrada'),
       ),
       body: const Center(
         child: Text(

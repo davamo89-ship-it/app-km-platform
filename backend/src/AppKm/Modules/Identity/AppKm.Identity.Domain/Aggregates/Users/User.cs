@@ -39,6 +39,12 @@ public sealed class User : AggregateRoot<UserId>
 
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
+    public string? PasswordResetCodeHash { get; private set; }
+
+    public DateTimeOffset? PasswordResetRequestedAtUtc { get; private set; }
+
+    public DateTimeOffset? PasswordResetExpiresAtUtc { get; private set; }
+
     public static Result<User> Register(
         UserId id,
         Email email,
@@ -70,5 +76,58 @@ public sealed class User : AggregateRoot<UserId>
                 occurredOnUtc));
 
         return Result<User>.Success(user);
+    }
+
+    public void Activate()
+    {
+        if (Status == UserStatus.PendingVerification)
+        {
+            Status = UserStatus.Active;
+        }
+    }
+
+    public void BeginPasswordReset(
+        string codeHash,
+        DateTimeOffset requestedAtUtc,
+        DateTimeOffset expiresAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(codeHash);
+
+        if (expiresAtUtc <= requestedAtUtc)
+        {
+            throw new ArgumentException(
+                "Password reset expiration must be after the request time.",
+                nameof(expiresAtUtc));
+        }
+
+        PasswordResetCodeHash = codeHash.Trim();
+        PasswordResetRequestedAtUtc = requestedAtUtc;
+        PasswordResetExpiresAtUtc = expiresAtUtc;
+    }
+
+    public bool HasUsablePasswordReset(DateTimeOffset utcNow)
+    {
+        return
+            !string.IsNullOrWhiteSpace(PasswordResetCodeHash) &&
+            PasswordResetExpiresAtUtc.HasValue &&
+            PasswordResetExpiresAtUtc.Value > utcNow;
+    }
+
+    public void CompletePasswordReset(
+        PasswordHash newPasswordHash)
+    {
+        ArgumentNullException.ThrowIfNull(newPasswordHash);
+
+        PasswordHash = newPasswordHash;
+        PasswordResetCodeHash = null;
+        PasswordResetRequestedAtUtc = null;
+        PasswordResetExpiresAtUtc = null;
+    }
+
+    public void ClearPasswordReset()
+    {
+        PasswordResetCodeHash = null;
+        PasswordResetRequestedAtUtc = null;
+        PasswordResetExpiresAtUtc = null;
     }
 }
