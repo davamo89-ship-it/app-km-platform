@@ -1,0 +1,8 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+WORKDIR /src
+COPY . .
+RUN dotnet tool install --global dotnet-ef --version 8.0.31
+ENV PATH="${PATH}:/root/.dotnet/tools"
+COPY aws-migrate.sh /usr/local/bin/aws-migrate.sh
+RUN chmod +x /usr/local/bin/aws-migrate.sh
+ENTRYPOINT ["/usr/local/bin/aws-migrate.sh"]

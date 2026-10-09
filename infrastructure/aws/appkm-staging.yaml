@@ -1,0 +1,610 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: App KM AWS staging - Cognito, RDS PostgreSQL, ECR, ECS Fargate/Express Mode, SNS foundation, S3 and CloudWatch.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: staging
+  DeployMigration:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  DeployCompute:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  IdentityImageUri:
+    Type: String
+    Default: ''
+  AthletesImageUri:
+    Type: String
+    Default: ''
+  MigrationImageUri:
+    Type: String
+    Default: ''
+  SnsPlatformApplicationArn:
+    Type: String
+    Default: NOT_CONFIGURED
+  SesSourceArn:
+    Type: String
+    Default: ''
+  SesFromAddress:
+    Type: String
+    Default: ''
+
+Conditions:
+  WithMigration: !Equals [!Ref DeployMigration, 'true']
+  WithCompute: !Equals [!Ref DeployCompute, 'true']
+  UseSes: !Not [!Equals [!Ref SesSourceArn, '']]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub appkm-${EnvironmentName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.42.0.0/24
+      MapPublicIpOnLaunch: true
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: true
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.42.10.0/24
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.42.11.0/24
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App KM ECS task access to private AWS resources
+      VpcId: !Ref Vpc
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App KM PostgreSQL
+      VpcId: !Ref Vpc
+  DatabaseIngressFromEcs:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: App KM isolated DB subnets
+      SubnetIds: [!Ref DatabaseSubnetA, !Ref DatabaseSubnetB]
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: '16'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: appkm
+      MasterUsername: appkm_admin
+      ManageMasterUserPassword: true
+      PubliclyAccessible: false
+      MultiAZ: false
+      # Free Plan staging: AWS rejected 7-day retention; keep the documented CLI default of 1 day.
+      # Increase this for production after moving to the Paid Plan and defining the backup policy.
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+      AutoMinorVersionUpgrade: true
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+
+  IdentityRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub appkm-${EnvironmentName}-identity
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: MUTABLE
+  AthletesRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub appkm-${EnvironmentName}-athletes
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: MUTABLE
+  MigrationRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub appkm-${EnvironmentName}-migrations
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: MUTABLE
+
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub appkm/${EnvironmentName}/legacy-jwt
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+  StravaSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub appkm/${EnvironmentName}/strava
+      SecretString: '{"clientId":"SET_ME","clientSecret":"SET_ME"}'
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub appkm-${EnvironmentName}
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: AppKmReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !GetAtt Database.MasterUserSecret.SecretArn
+                  - !Ref JwtSecret
+                  - !Ref StravaSecret
+
+  ExpressInfrastructureRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AppKmSnsMobilePush
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:CreatePlatformEndpoint
+                  - sns:GetEndpointAttributes
+                  - sns:SetEndpointAttributes
+                  - sns:Publish
+                Resource: '*'
+
+  IdentityLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /appkm/${EnvironmentName}/identity
+      RetentionInDays: 30
+  AthletesLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /appkm/${EnvironmentName}/athletes
+      RetentionInDays: 30
+  MigrationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /appkm/${EnvironmentName}/migrations
+      RetentionInDays: 14
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub appkm-${EnvironmentName}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+      EmailConfiguration: !If
+        - UseSes
+        - EmailSendingAccount: DEVELOPER
+          SourceArn: !Ref SesSourceArn
+          From: !Ref SesFromAddress
+        - EmailSendingAccount: COGNITO_DEFAULT
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationFunction.Arn
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub appkm-${EnvironmentName}-mobile
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  AthleteGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: Athlete
+      Precedence: 30
+  MerchantGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: Merchant
+      Precedence: 20
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: Admin
+      Precedence: 10
+
+  PostConfirmationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AddDefaultAthleteGroup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cognito-idp:AdminAddUserToGroup
+                # Wildcard resource avoids a CloudFormation dependency cycle
+                # (UserPool -> Lambda -> Role -> UserPool). The role grants
+                # only this single Cognito administrative action.
+                Resource: "*"
+  PostConfirmationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt PostConfirmationRole.Arn
+      Timeout: 10
+      Code:
+        ZipFile: |
+          import boto3
+          def handler(event, context):
+              boto3.client('cognito-idp').admin_add_user_to_group(
+                  UserPoolId=event['userPoolId'],
+                  Username=event['userName'],
+                  GroupName='Athlete')
+              return event
+  CognitoInvokePostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostConfirmationFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub appkm_${EnvironmentName}
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+          ServerSideTokenCheck: true
+  IdentityPoolAuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Federated: cognito-identity.amazonaws.com }
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt IdentityPoolAuthenticatedRole.Arn
+
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: { Status: Enabled }
+
+  MigrationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: WithMigration
+    Properties:
+      Family: !Sub appkm-${EnvironmentName}-migrations
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: migrations
+          Image: !Ref MigrationImageUri
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migrations
+          Secrets:
+            - Name: RENDER_POSTGRES_PASSWORD
+              ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::'
+          Environment:
+            - Name: ASPNETCORE_ENVIRONMENT
+              Value: Staging
+            - Name: RENDER_POSTGRES_HOST
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: RENDER_POSTGRES_PORT
+              Value: !GetAtt Database.Endpoint.Port
+            - Name: RENDER_POSTGRES_DATABASE
+              Value: appkm
+            - Name: RENDER_POSTGRES_USER
+              Value: appkm_admin
+
+  IdentityExpressService:
+    Type: AWS::ECS::ExpressGatewayService
+    Condition: WithCompute
+    Properties:
+      ServiceName: !Sub appkm-${EnvironmentName}-identity
+      Cluster: !Ref Cluster
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      InfrastructureRoleArn: !GetAtt ExpressInfrastructureRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      HealthCheckPath: /health/ready
+      NetworkConfiguration:
+        Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+        SecurityGroups: [!Ref EcsSecurityGroup]
+      ScalingTarget:
+        MinTaskCount: 1
+        MaxTaskCount: 1
+        AutoScalingMetric: AVERAGE_CPU
+        AutoScalingTargetValue: 60
+      PrimaryContainer:
+        Image: !Ref IdentityImageUri
+        ContainerPort: 8080
+        AwsLogsConfiguration:
+          LogGroup: !Ref IdentityLogGroup
+          LogStreamPrefix: api
+        Environment:
+          - { Name: ASPNETCORE_ENVIRONMENT, Value: Staging }
+          - { Name: ASPNETCORE_HTTP_PORTS, Value: '8080' }
+          - { Name: ASPNETCORE_FORWARDEDHEADERS_ENABLED, Value: 'true' }
+          - { Name: AllowedHosts, Value: '*' }
+          - { Name: Aws__BehindManagedLoadBalancer, Value: 'true' }
+          - { Name: Jwt__Issuer, Value: AppKm.Identity.Api }
+          - { Name: Jwt__Audience, Value: AppKm.Platform }
+          - { Name: Jwt__ExpirationMinutes, Value: '15' }
+          - { Name: RefreshToken__ExpirationDays, Value: '30' }
+          - { Name: RefreshToken__SizeInBytes, Value: '64' }
+          - { Name: Cognito__Region, Value: !Ref AWS::Region }
+          - { Name: Cognito__UserPoolId, Value: !Ref UserPool }
+          - { Name: Cognito__AppClientId, Value: !Ref UserPoolClient }
+          - { Name: RENDER_POSTGRES_HOST, Value: !GetAtt Database.Endpoint.Address }
+          - { Name: RENDER_POSTGRES_PORT, Value: !GetAtt Database.Endpoint.Port }
+          - { Name: RENDER_POSTGRES_DATABASE, Value: appkm }
+          - { Name: RENDER_POSTGRES_USER, Value: appkm_admin }
+        Secrets:
+          - { Name: Jwt__Secret, ValueFrom: !Ref JwtSecret }
+          - Name: RENDER_POSTGRES_PASSWORD
+            ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::'
+
+  AthletesExpressService:
+    Type: AWS::ECS::ExpressGatewayService
+    Condition: WithCompute
+    Properties:
+      ServiceName: !Sub appkm-${EnvironmentName}-athletes
+      Cluster: !Ref Cluster
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      InfrastructureRoleArn: !GetAtt ExpressInfrastructureRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      HealthCheckPath: /health/ready
+      NetworkConfiguration:
+        Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+        SecurityGroups: [!Ref EcsSecurityGroup]
+      ScalingTarget:
+        MinTaskCount: 1
+        MaxTaskCount: 1
+        AutoScalingMetric: AVERAGE_CPU
+        AutoScalingTargetValue: 60
+      PrimaryContainer:
+        Image: !Ref AthletesImageUri
+        ContainerPort: 8080
+        AwsLogsConfiguration:
+          LogGroup: !Ref AthletesLogGroup
+          LogStreamPrefix: api
+        Environment:
+          - { Name: ASPNETCORE_ENVIRONMENT, Value: Staging }
+          - { Name: ASPNETCORE_HTTP_PORTS, Value: '8080' }
+          - { Name: ASPNETCORE_FORWARDEDHEADERS_ENABLED, Value: 'true' }
+          - { Name: AllowedHosts, Value: '*' }
+          - { Name: Aws__BehindManagedLoadBalancer, Value: 'true' }
+          - { Name: Jwt__Issuer, Value: AppKm.Identity.Api }
+          - { Name: Jwt__Audience, Value: AppKm.Platform }
+          - { Name: Firebase__ProjectId, Value: app-km-5e628 }
+          - { Name: Cognito__Region, Value: !Ref AWS::Region }
+          - { Name: Cognito__UserPoolId, Value: !Ref UserPool }
+          - { Name: Cognito__AppClientId, Value: !Ref UserPoolClient }
+          - { Name: Aws__Sns__PlatformApplicationArn, Value: !Ref SnsPlatformApplicationArn }
+          - Name: Strava__RedirectUri
+            Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws/api/v1/athletes/strava/callback'
+          - { Name: RENDER_POSTGRES_HOST, Value: !GetAtt Database.Endpoint.Address }
+          - { Name: RENDER_POSTGRES_PORT, Value: !GetAtt Database.Endpoint.Port }
+          - { Name: RENDER_POSTGRES_DATABASE, Value: appkm }
+          - { Name: RENDER_POSTGRES_USER, Value: appkm_admin }
+        Secrets:
+          - { Name: Jwt__Secret, ValueFrom: !Ref JwtSecret }
+          - Name: Strava__ClientId
+            ValueFrom: !Sub '${StravaSecret}:clientId::'
+          - Name: Strava__ClientSecret
+            ValueFrom: !Sub '${StravaSecret}:clientSecret::'
+          - Name: RENDER_POSTGRES_PASSWORD
+            ValueFrom: !Sub '${Database.MasterUserSecret.SecretArn}:password::'
+
+Outputs:
+  IdentityApiBaseUrl:
+    Condition: WithCompute
+    Value: !Sub 'https://appkm-${EnvironmentName}-identity.ecs.${AWS::Region}.on.aws'
+  AthletesApiBaseUrl:
+    Condition: WithCompute
+    Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws'
+  IdentityExpressEndpoint:
+    Condition: WithCompute
+    Value: !GetAtt IdentityExpressService.Endpoint
+  AthletesExpressEndpoint:
+    Condition: WithCompute
+    Value: !GetAtt AthletesExpressService.Endpoint
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+  IdentityRepositoryUri:
+    Value: !GetAtt IdentityRepository.RepositoryUri
+  AthletesRepositoryUri:
+    Value: !GetAtt AthletesRepository.RepositoryUri
+  MigrationRepositoryUri:
+    Value: !GetAtt MigrationRepository.RepositoryUri
+  ClusterName:
+    Value: !Ref Cluster
+  PublicSubnetA:
+    Value: !Ref PublicSubnetA
+  PublicSubnetB:
+    Value: !Ref PublicSubnetB
+  EcsSecurityGroup:
+    Value: !Ref EcsSecurityGroup
+  MigrationTaskDefinitionArn:
+    Condition: WithMigration
+    Value: !Ref MigrationTaskDefinition
+  StravaSecretArn:
+    Value: !Ref StravaSecret
+  StravaCallbackUrl:
+    Condition: WithCompute
+    Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws/api/v1/athletes/strava/callback'
+  StorageBucketName:
+    Value: !Ref StorageBucket

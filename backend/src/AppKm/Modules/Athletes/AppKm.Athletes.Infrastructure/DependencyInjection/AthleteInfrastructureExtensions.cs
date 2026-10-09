@@ -1,3 +1,4 @@
+using Amazon.SimpleNotificationService;
 using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Infrastructure.Persistence;
 using AppKm.Athletes.Infrastructure.Persistence.Repositories;
@@ -163,9 +164,27 @@ public static class AthleteInfrastructureExtensions
             IMerchantRepository,
             MerchantRepository>();
 
-        services.AddSingleton<
-            IPushNotificationSender,
-            FirebasePushNotificationSender>();
+        string? snsPlatformApplicationArn =
+            configuration["Aws:Sns:PlatformApplicationArn"];
+
+        if (!string.IsNullOrWhiteSpace(snsPlatformApplicationArn) &&
+            !string.Equals(
+                snsPlatformApplicationArn,
+                "NOT_CONFIGURED",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IAmazonSimpleNotificationService>(
+                _ => new AmazonSimpleNotificationServiceClient());
+            services.AddSingleton<
+                IPushNotificationSender,
+                SnsPushNotificationSender>();
+        }
+        else
+        {
+            services.AddSingleton<
+                IPushNotificationSender,
+                FirebasePushNotificationSender>();
+        }
 
         return services;
     }

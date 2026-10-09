@@ -86,12 +86,26 @@ class _RegisterScreenState
         _passwordController.text;
 
     try {
-      await _authApiService.register(
+      final registration = await _authApiService.register(
         email: email,
         password: password,
       );
 
-      // Intentamos iniciar sesión inmediatamente.
+      if (registration.requiresConfirmation) {
+        final confirmationCode =
+            await _requestConfirmationCode(email);
+
+        if (confirmationCode == null) {
+          return;
+        }
+
+        await _authApiService.confirmRegistration(
+          email: email,
+          code: confirmationCode,
+        );
+      }
+
+      // Cognito ya confirmó la cuenta; iniciamos sesión.
       // Si por algún motivo no fuera posible, la cuenta
       // ya quedó creada y se regresa al login.
       try {
@@ -185,6 +199,57 @@ class _RegisterScreenState
     }
 
     return null;
+  }
+
+  Future<String?> _requestConfirmationCode(String email) async {
+    final controller = TextEditingController();
+
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Confirmar correo'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AWS Cognito envió un código de confirmación a $email.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Código de confirmación',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (value.isNotEmpty) {
+                    Navigator.of(dialogContext).pop(value);
+                  }
+                },
+                child: const Text('Continuar'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   void _showMessage(String message) {

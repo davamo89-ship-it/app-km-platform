@@ -1,3 +1,4 @@
+using AppKm.Athletes.Api.Security;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using AppKm.Athletes.Api.Observability;
@@ -35,12 +36,16 @@ if (!builder.Environment.IsDevelopment())
     string? allowedHosts =
         builder.Configuration["AllowedHosts"];
 
+    bool behindManagedLoadBalancer =
+        builder.Configuration.GetValue<bool>(
+            "Aws:BehindManagedLoadBalancer");
+
     if (string.IsNullOrWhiteSpace(allowedHosts) ||
-        allowedHosts.Trim() == "*" ||
-        allowedHosts.StartsWith("REPLACE_", StringComparison.OrdinalIgnoreCase))
+        ((!behindManagedLoadBalancer && allowedHosts.Trim() == "*") ||
+         allowedHosts.StartsWith("REPLACE_", StringComparison.OrdinalIgnoreCase)))
     {
         throw new InvalidOperationException(
-            "Production configuration requires an explicit AllowedHosts value.");
+            "Production configuration requires an explicit AllowedHosts value unless AWS managed load balancing is enabled.");
     }
 
     string? productionAthleteDatabase =
@@ -291,6 +296,15 @@ builder.Services
         JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        if (CognitoAuthentication.IsConfigured(builder.Configuration))
+        {
+            CognitoAuthentication.Configure(
+                options,
+                builder.Configuration,
+                RedemptionHub.Path);
+            return;
+        }
+
         options.MapInboundClaims = false;
 
         options.TokenValidationParameters =
@@ -298,18 +312,14 @@ builder.Services
             {
                 ValidateIssuer = true,
                 ValidIssuer = issuer,
-
                 ValidateAudience = true,
                 ValidAudience = audience,
-
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey =
                     new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(secret)),
-
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
-
                 RoleClaimType = "role"
             };
 
@@ -449,7 +459,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!builder.Configuration.GetValue<bool>("Aws:BehindManagedLoadBalancer"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseRateLimiter();

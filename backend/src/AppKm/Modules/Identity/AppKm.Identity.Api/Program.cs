@@ -20,6 +20,7 @@ using AppKm.Identity.Application.Commands.RegisterPushDevice;
 using AppKm.Identity.Application.Commands.DeactivatePushDevice;
 using AppKm.Identity.Application.Commands.RequestPasswordReset;
 using AppKm.Identity.Application.Commands.ConfirmPasswordReset;
+using AppKm.Identity.Application.Commands.ProvisionCognitoUser;
 using AppKm.Identity.Api.Security;
 using AppKm.Identity.Domain.Aggregates.Roles;
 using AppKm.Athletes.Infrastructure.DependencyInjection;
@@ -39,12 +40,16 @@ if (!builder.Environment.IsDevelopment())
     string? allowedHosts =
         builder.Configuration["AllowedHosts"];
 
+    bool behindManagedLoadBalancer =
+        builder.Configuration.GetValue<bool>(
+            "Aws:BehindManagedLoadBalancer");
+
     if (string.IsNullOrWhiteSpace(allowedHosts) ||
-        allowedHosts.Trim() == "*" ||
-        allowedHosts.StartsWith("REPLACE_", StringComparison.OrdinalIgnoreCase))
+        ((!behindManagedLoadBalancer && allowedHosts.Trim() == "*") ||
+         allowedHosts.StartsWith("REPLACE_", StringComparison.OrdinalIgnoreCase)))
     {
         throw new InvalidOperationException(
-            "Production configuration requires an explicit AllowedHosts value.");
+            "Production configuration requires an explicit AllowedHosts value unless AWS managed load balancing is enabled.");
     }
 
     string? productionIdentityDatabase =
@@ -113,6 +118,7 @@ builder.Services.AddScoped<RegisterPushDeviceCommandHandler>();
 builder.Services.AddScoped<DeactivatePushDeviceCommandHandler>();
 builder.Services.AddScoped<RequestPasswordResetCommandHandler>();
 builder.Services.AddScoped<ConfirmPasswordResetCommandHandler>();
+builder.Services.AddScoped<ProvisionCognitoUserCommandHandler>();
 
 // Servicios HTTP
 builder.Services.AddSingleton(
@@ -255,6 +261,14 @@ builder.Services
         JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        if (CognitoAuthentication.IsConfigured(builder.Configuration))
+        {
+            CognitoAuthentication.Configure(
+                options,
+                builder.Configuration);
+            return;
+        }
+
         options.MapInboundClaims = false;
         options.IncludeErrorDetails = false;
 
@@ -263,22 +277,17 @@ builder.Services
             {
                 ValidateIssuer = true,
                 ValidIssuer = jwtOptions.Issuer,
-
                 ValidateAudience = true,
                 ValidAudience = jwtOptions.Audience,
-
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey =
                     new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(
                             jwtOptions.Secret)),
-
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
-
                 RoleClaimType = "role",
             };
-
     });
 
 builder.Services.AddAuthorization(options =>
@@ -424,7 +433,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!builder.Configuration.GetValue<bool>("Aws:BehindManagedLoadBalancer"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseRateLimiter();

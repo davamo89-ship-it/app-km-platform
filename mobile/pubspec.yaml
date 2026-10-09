@@ -19,6 +19,8 @@ dependencies:
   signalr_netcore: ^1.4.3
   firebase_core: ^4.14.0
   firebase_messaging: ^16.6.0
+  amplify_flutter: ^2.15.0
+  amplify_auth_cognito: ^2.15.1
 
 dev_dependencies:
   flutter_test:

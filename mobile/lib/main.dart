@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_dependencies.dart';
+import 'core/config/aws_amplify_config.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'services/notifications/push_device_registration_service.dart';
@@ -11,6 +12,8 @@ import 'services/notifications/push_notification_navigation_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await AwsAmplifyConfig.configure();
 
   await Firebase.initializeApp();
 

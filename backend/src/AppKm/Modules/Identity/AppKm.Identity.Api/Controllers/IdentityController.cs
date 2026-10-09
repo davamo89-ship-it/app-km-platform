@@ -10,6 +10,7 @@ using AppKm.Identity.Application.Commands.RefreshSession;
 using AppKm.Identity.Application.Commands.LogoutSession;
 using AppKm.Identity.Application.Commands.RequestPasswordReset;
 using AppKm.Identity.Application.Commands.ConfirmPasswordReset;
+using AppKm.Identity.Application.Commands.ProvisionCognitoUser;
 
 namespace AppKm.Identity.Api.Controllers;
 
@@ -23,6 +24,7 @@ public sealed class IdentityController : ControllerBase
     private readonly LogoutSessionCommandHandler _logoutSessionHandler;
     private readonly RequestPasswordResetCommandHandler _requestPasswordResetHandler;
     private readonly ConfirmPasswordResetCommandHandler _confirmPasswordResetHandler;
+    private readonly ProvisionCognitoUserCommandHandler _provisionCognitoUserHandler;
     private readonly ILogger<IdentityController> _logger;
 
     public IdentityController(
@@ -32,6 +34,7 @@ public sealed class IdentityController : ControllerBase
         LogoutSessionCommandHandler logoutSessionHandler,
         RequestPasswordResetCommandHandler requestPasswordResetHandler,
         ConfirmPasswordResetCommandHandler confirmPasswordResetHandler,
+        ProvisionCognitoUserCommandHandler provisionCognitoUserHandler,
         ILogger<IdentityController> logger)
     {
         _registerUserHandler = registerUserHandler;
@@ -40,6 +43,7 @@ public sealed class IdentityController : ControllerBase
         _logoutSessionHandler = logoutSessionHandler;
         _requestPasswordResetHandler = requestPasswordResetHandler;
         _confirmPasswordResetHandler = confirmPasswordResetHandler;
+        _provisionCognitoUserHandler = provisionCognitoUserHandler;
         _logger = logger;
     }
     [HttpGet("status")]
@@ -231,6 +235,50 @@ public sealed class IdentityController : ControllerBase
                 userId,
                 email,
                 roles));
+    }
+
+    [Authorize]
+    [HttpPost("provision-cognito")]
+    [ProducesResponseType<ProvisionCognitoUserResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ProvisionCognitoUser(
+        ProvisionCognitoUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        string? userIdValue =
+            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+        if (!Guid.TryParse(userIdValue, out Guid userId))
+        {
+            return Unauthorized();
+        }
+
+        string[] roles = User.FindAll("role")
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var result = await _provisionCognitoUserHandler.HandleAsync(
+            new ProvisionCognitoUserCommand(
+                userId,
+                request.Email,
+                roles),
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            ErrorResponse error = ToErrorResponse(result.Error);
+            return result.Error.Code == ProvisionCognitoUserErrors.EmailAlreadyUsed.Code
+                ? Conflict(error)
+                : BadRequest(error);
+        }
+
+        return Ok(new ProvisionCognitoUserResponse(
+            result.Value.UserId,
+            result.Value.Email,
+            result.Value.Roles));
     }
 
         [HttpPost("refresh")]
