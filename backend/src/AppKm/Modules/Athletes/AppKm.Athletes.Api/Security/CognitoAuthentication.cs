@@ -104,7 +104,7 @@ internal static class CognitoAuthentication
                     JwtRegisteredClaimNames.Sub,
                     ToAppKmUserId(cognitoSubject).ToString("D")));
 
-                foreach (string group in ReadGroups(identity))
+                foreach (string group in ReadGroups(identity).ToArray())
                 {
                     if (!identity.HasClaim("role", group))
                     {
