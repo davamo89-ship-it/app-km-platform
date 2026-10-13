@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
+import '../../models/auth/login_response.dart';
 import '../../services/auth/auth_token_store.dart';
 import '../../services/auth/role_access_service.dart';
 import '../../services/notifications/push_device_registration_service.dart';
 import '../../services/notifications/push_notification_navigation_service.dart';
 import '../merchants/merchant_screen.dart';
+import 'email_confirmation_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,6 +28,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final RoleAccessService _roleAccessService =
       RoleAccessService();
 
+  String? _feedback;
+  bool _feedbackIsError = true;
   bool _isLoggingIn = false;
   bool _obscurePassword = true;
 
@@ -52,13 +56,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       _isLoggingIn = true;
+      _feedback = null;
     });
 
     try {
-      final result = await _authApiService.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      FocusScope.of(context).unfocus();
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      final result = await _loginWithConfirmation(email, password);
+      if (result == null || !mounted) return;
 
       await _authTokenStore.saveSession(result);
 
@@ -74,6 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await _navigateForRole(role);
     } on AuthApiException catch (error) {
+      await _authTokenStore.clearSession();
       if (!mounted) {
         return;
       }
@@ -106,6 +113,22 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<LoginResponse?> _loginWithConfirmation(String email, String password) async {
+    try {
+      return await _authApiService.login(email: email, password: password);
+    } on AuthApiException catch (error) {
+      if (error.code != 'Cognito.UserNotConfirmed') rethrow;
+      if (!mounted) return null;
+      final confirmed = await showEmailConfirmationDialog(
+        context: context,
+        email: email,
+        confirm: (code) => _authApiService.confirmRegistration(email: email, code: code),
+      );
+      if (!confirmed || !mounted) return null;
+      return await _authApiService.login(email: email, password: password);
+    }
+  }
+
   Future<void> _openRegister() async {
     final result = await Navigator.pushNamed<String>(
       context,
@@ -119,7 +142,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     _emailController.text = result;
     _showMessage(
-      'Cuenta creada. Ya puede iniciar sesión.',
+      'Cuenta confirmada. Ya puede iniciar sesión.',
+      isError: false,
     );
   }
 
@@ -139,6 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     _showMessage(
       'Contraseña actualizada. Inicie sesión con la nueva contraseña.',
+      isError: false,
     );
   }
 
@@ -191,7 +216,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showMessage(String message) {
+  void _showMessage(String message, {bool isError = true}) {
+    setState(() {
+      _feedback = message;
+      _feedbackIsError = isError;
+    });
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -287,6 +316,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 24),
+                            if (_feedback != null) ...[
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(
+                                  _feedback!,
+                                  style: TextStyle(color: _feedbackIsError
+                                      ? Theme.of(context).colorScheme.error
+                                      : AppColors.primary),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             TextFormField(
                               controller:
                                   _emailController,

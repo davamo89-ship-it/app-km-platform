@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 import '../../core/config/api_config.dart' as app_api;
 import '../../models/auth/login_response.dart';
@@ -42,12 +44,29 @@ class AuthApiService {
     required String password,
   }) async {
     try {
+      // An earlier provisioning failure can leave Amplify signed in while the
+      // App KM token store is empty. An explicit login must verify credentials.
+      final previous = await Amplify.Auth.fetchAuthSession();
+      if (previous.isSignedIn) {
+        await Amplify.Auth.signOut();
+        final afterSignOut = await Amplify.Auth.fetchAuthSession();
+        if (afterSignOut.isSignedIn) {
+          throw const AuthApiException('No se pudo cerrar la sesión anterior. Intente de nuevo.');
+        }
+      }
       final result = await Amplify.Auth.signIn(
         username: email.trim(),
         password: password,
       );
 
       if (!result.isSignedIn) {
+        if (result.nextStep.signInStep == AuthSignInStep.confirmSignUp) {
+          throw const AuthApiException(
+            'Debe confirmar su correo electrónico antes de iniciar sesión.',
+            code: 'Cognito.UserNotConfirmed',
+          );
+        }
+        debugPrint('[AppKM Auth] signIn nextStep=${result.nextStep.signInStep.name}');
         throw const AuthApiException(
           'El inicio de sesión requiere un paso adicional que esta versión todavía no puede completar.',
         );
@@ -70,7 +89,12 @@ class AuthApiService {
         code: 'Cognito.NotAuthorized',
       );
     } on AuthException catch (error) {
+      debugPrint('[AppKM Auth] Cognito errorType=${error.runtimeType}');
       throw AuthApiException(error.message);
+    } on TimeoutException {
+      throw const AuthApiException('Identity no respondió a tiempo. Intente de nuevo.', code: 'Identity.Timeout');
+    } on http.ClientException {
+      throw const AuthApiException('No se pudo conectar con Identity. Revise la conexión.', code: 'Identity.Connection');
     }
   }
 
@@ -231,7 +255,8 @@ class AuthApiService {
         'Authorization': 'Bearer $accessToken',
       },
       body: jsonEncode({'email': email}),
-    );
+    ).timeout(const Duration(seconds: 30));
+    debugPrint('[AppKM Auth] provision-cognito HTTP ${provisionResponse.statusCode}');
 
     if (provisionResponse.statusCode < 200 ||
         provisionResponse.statusCode >= 300) {
@@ -271,7 +296,7 @@ class AuthApiService {
   }
 
   Never _throwHttpException(http.Response response) {
-    var message = 'No fue posible preparar la cuenta de App KM.';
+    var message = 'No fue posible preparar la cuenta de App KM (HTTP ${response.statusCode}).';
     String? code;
 
     try {

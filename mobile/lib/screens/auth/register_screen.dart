@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/auth/auth_api_service.dart';
-import '../../services/auth/auth_token_store.dart';
-import '../../services/auth/role_access_service.dart';
-import '../../services/notifications/push_device_registration_service.dart';
+import 'email_confirmation_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({
@@ -36,12 +33,6 @@ class _RegisterScreenState
   final AuthApiService _authApiService =
       AuthApiService();
 
-  final AuthTokenStore _authTokenStore =
-      AuthTokenStore();
-
-  final RoleAccessService _roleAccessService =
-      RoleAccessService();
-
   bool _isSubmitting = false;
   bool _obscurePassword = true;
   bool _obscureConfirmation = true;
@@ -61,7 +52,6 @@ class _RegisterScreenState
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _authApiService.dispose();
-    _roleAccessService.dispose();
 
     super.dispose();
   }
@@ -91,62 +81,18 @@ class _RegisterScreenState
         password: password,
       );
 
+      if (!mounted) return;
       if (registration.requiresConfirmation) {
-        final confirmationCode =
-            await _requestConfirmationCode(email);
-
-        if (confirmationCode == null) {
-          return;
-        }
-
-        await _authApiService.confirmRegistration(
+        final confirmed = await showEmailConfirmationDialog(
+          context: context,
           email: email,
-          code: confirmationCode,
+          confirm: (code) => _authApiService.confirmRegistration(email: email, code: code),
         );
+        if (!confirmed || !mounted) return;
       }
-
-      // Cognito ya confirmó la cuenta; iniciamos sesión.
-      // Si por algún motivo no fuera posible, la cuenta
-      // ya quedó creada y se regresa al login.
-      try {
-        final session =
-            await _authApiService.login(
-          email: email,
-          password: password,
-        );
-
-        await _authTokenStore.saveSession(
-          session,
-        );
-
-        await PushDeviceRegistrationService
-            .instance
-            .syncCurrentToken();
-
-        final role =
-            await _roleAccessService
-                .resolveCurrentRole();
-
-        if (!mounted) {
-          return;
-        }
-
-        if (role == AppUserRole.athlete) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            AppRoutes.dashboard,
-            (route) => false,
-          );
-          return;
-        }
-      } catch (_) {
-        await _authTokenStore.clearSession();
-      }
-
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
+      FocusScope.of(context).unfocus();
+      // Sign in explicitly on the login screen; do not hide provisioning errors.
       Navigator.pop(context, email);
     } on AuthApiException catch (error) {
       if (!mounted) {
@@ -199,57 +145,6 @@ class _RegisterScreenState
     }
 
     return null;
-  }
-
-  Future<String?> _requestConfirmationCode(String email) async {
-    final controller = TextEditingController();
-
-    try {
-      return await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Confirmar correo'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'AWS Cognito envió un código de confirmación a $email.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Código de confirmación',
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final value = controller.text.trim();
-                  if (value.isNotEmpty) {
-                    Navigator.of(dialogContext).pop(value);
-                  }
-                },
-                child: const Text('Continuar'),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
-    }
   }
 
   void _showMessage(String message) {

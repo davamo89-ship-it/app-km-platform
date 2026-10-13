@@ -25,6 +25,10 @@ Parameters:
   SnsPlatformApplicationArn:
     Type: String
     Default: NOT_CONFIGURED
+  StravaRedirectUri:
+    Type: String
+    Default: 'https://localhost/api/v1/athletes/strava/callback'
+    Description: Actual Athletes callback; deploy script resolves the AWS endpoint before OAuth is used.
   SesSourceArn:
     Type: String
     Default: ''
@@ -551,7 +555,7 @@ Resources:
           - { Name: Cognito__AppClientId, Value: !Ref UserPoolClient }
           - { Name: Aws__Sns__PlatformApplicationArn, Value: !Ref SnsPlatformApplicationArn }
           - Name: Strava__RedirectUri
-            Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws/api/v1/athletes/strava/callback'
+            Value: !Ref StravaRedirectUri
           - { Name: RENDER_POSTGRES_HOST, Value: !GetAtt Database.Endpoint.Address }
           - { Name: RENDER_POSTGRES_PORT, Value: !GetAtt Database.Endpoint.Port }
           - { Name: RENDER_POSTGRES_DATABASE, Value: appkm }
@@ -568,10 +572,10 @@ Resources:
 Outputs:
   IdentityApiBaseUrl:
     Condition: WithCompute
-    Value: !Sub 'https://appkm-${EnvironmentName}-identity.ecs.${AWS::Region}.on.aws'
+    Value: !Sub 'https://${IdentityExpressService.Endpoint}'
   AthletesApiBaseUrl:
     Condition: WithCompute
-    Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws'
+    Value: !Sub 'https://${AthletesExpressService.Endpoint}'
   IdentityExpressEndpoint:
     Condition: WithCompute
     Value: !GetAtt IdentityExpressService.Endpoint
@@ -605,6 +609,6 @@ Outputs:
     Value: !Ref StravaSecret
   StravaCallbackUrl:
     Condition: WithCompute
-    Value: !Sub 'https://appkm-${EnvironmentName}-athletes.ecs.${AWS::Region}.on.aws/api/v1/athletes/strava/callback'
+    Value: !Sub 'https://${AthletesExpressService.Endpoint}/api/v1/athletes/strava/callback'
   StorageBucketName:
     Value: !Ref StorageBucket

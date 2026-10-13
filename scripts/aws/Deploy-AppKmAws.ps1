@@ -2,7 +2,8 @@
 param(
     [string]$Region = 'us-east-1',
     [string]$StackName = 'appkm-staging',
-    [string]$FirebaseServiceAccount = 'C:\AppKmSecrets\firebase-admin.json'
+    [string]$FirebaseServiceAccount = 'C:\AppKmSecrets\firebase-admin.json',
+    [switch]$ResumeCompute
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,38 +20,6 @@ function Assert-Command([string]$Name) {
 }
 
 
-
-function ConvertTo-JsonStringLiteral([string]$Value) {
-    if ($null -eq $Value) {
-        return 'null'
-    }
-
-    $sb = New-Object System.Text.StringBuilder
-    [void]$sb.Append('"')
-
-    foreach ($ch in $Value.ToCharArray()) {
-        $code = [int][char]$ch
-        switch ($code) {
-            34 { [void]$sb.Append('\"'); continue }
-            92 { [void]$sb.Append('\\'); continue }
-            8  { [void]$sb.Append('\b'); continue }
-            9  { [void]$sb.Append('\t'); continue }
-            10 { [void]$sb.Append('\n'); continue }
-            12 { [void]$sb.Append('\f'); continue }
-            13 { [void]$sb.Append('\r'); continue }
-        }
-
-        if ($code -lt 32) {
-            [void]$sb.AppendFormat('\u{0:x4}', $code)
-        }
-        else {
-            [void]$sb.Append($ch)
-        }
-    }
-
-    [void]$sb.Append('"')
-    return $sb.ToString()
-}
 
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
     $encoding = New-Object System.Text.UTF8Encoding($false)
@@ -178,19 +147,31 @@ function Get-Output([string]$Key) {
     return $value.Trim()
 }
 
+function ConvertTo-HttpsBaseUrl([string]$Endpoint) {
+    $value = $Endpoint.Trim().TrimEnd('/')
+    if ($value -notmatch '^https://') { $value = 'https://' + $value }
+    $uri = [uri]$value
+    if ($uri.Scheme -ne 'https' -or [string]::IsNullOrWhiteSpace($uri.Host) -or $uri.AbsolutePath -ne '/' -or $uri.Query -or $uri.Fragment -or $uri.UserInfo) {
+        throw 'AWS devolvio un endpoint HTTPS inesperado.'
+    }
+    return $value
+}
+
 function Deploy-Stack(
     [string]$DeployMigration,
     [string]$DeployCompute,
     [string]$IdentityImage,
     [string]$AthletesImage,
     [string]$MigrationImage,
-    [string]$SnsArn
+    [string]$SnsArn,
+    [string]$CallbackUri = 'https://localhost/api/v1/athletes/strava/callback'
 ) {
     aws cloudformation deploy `
         --template-file $template `
         --stack-name $StackName `
         --region $Region `
         --capabilities CAPABILITY_NAMED_IAM `
+        --no-fail-on-empty-changeset `
         --parameter-overrides `
             EnvironmentName=staging `
             DeployMigration=$DeployMigration `
@@ -198,7 +179,8 @@ function Deploy-Stack(
             IdentityImageUri=$IdentityImage `
             AthletesImageUri=$AthletesImage `
             MigrationImageUri=$MigrationImage `
-            SnsPlatformApplicationArn=$SnsArn
+            SnsPlatformApplicationArn=$SnsArn `
+            StravaRedirectUri=$CallbackUri
 
     if ($LASTEXITCODE -ne 0) {
         Show-CloudFormationFailure
@@ -207,12 +189,20 @@ function Deploy-Stack(
 }
 
 Assert-Command aws
-Assert-Command docker
+if (-not $ResumeCompute) { Assert-Command docker }
 
 Write-Host 'Validando sesion AWS...'
 aws sts get-caller-identity --region $Region --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw 'AWS CLI no tiene una sesion valida. Ejecute aws login.'
+}
+
+if ($ResumeCompute) {
+    $resumeStatus = Get-StackStatus
+    if ($resumeStatus -notin @('UPDATE_ROLLBACK_COMPLETE', 'UPDATE_COMPLETE')) {
+        throw "No se puede reanudar 6/7 con el stack en $resumeStatus. Espere a que termine el rollback; no borre el stack."
+    }
+    Write-Host 'Reanudacion 6/7: se reutilizaran las imagenes y las migraciones ya ejecutadas.'
 }
 
 Write-Host 'Validando template CloudFormation...'
@@ -224,10 +214,11 @@ if ($LASTEXITCODE -ne 0) {
     throw 'El template CloudFormation no paso validate-template.'
 }
 
-Remove-UnusableRollbackStack
-
-Write-Host '1/7 - Creando foundation AWS...'
-Deploy-Stack 'false' 'false' '' '' '' 'NOT_CONFIGURED'
+if (-not $ResumeCompute) {
+    Remove-UnusableRollbackStack
+    Write-Host '1/7 - Creando foundation AWS...'
+    Deploy-Stack 'false' 'false' '' '' '' 'NOT_CONFIGURED'
+}
 
 $identityRepo = Get-Output 'IdentityRepositoryUri'
 $athletesRepo = Get-Output 'AthletesRepositoryUri'
@@ -255,17 +246,52 @@ else {
         try { $clientSecret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
         finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
     }
-    $stravaJson = @{ clientId = $clientId; clientSecret = $clientSecret } | ConvertTo-Json -Compress
-    aws secretsmanager put-secret-value `
-        --secret-id $stravaSecretArn `
-        --secret-string $stravaJson `
-        --region $Region `
-        --no-cli-pager | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'No se pudo guardar Strava en Secrets Manager.' }
-    $clientSecret = $null
-    $stravaJson = $null
+    if ($clientId -notmatch '^\d+$' -or [string]::IsNullOrWhiteSpace($clientSecret) -or $clientSecret -eq 'SET_ME') {
+        throw 'Strava Client ID debe ser numerico y Client Secret no puede estar vacio ni ser SET_ME.'
+    }
+    $stravaJson = ConvertTo-Json -InputObject @{ clientId = [string]$clientId; clientSecret = [string]$clientSecret } -Depth 3 -Compress
+    # Keep the temporary payload outside the repository, next to the local credentials.
+    $secretsDirectory = Split-Path -Parent $FirebaseServiceAccount
+    if (-not (Test-Path -LiteralPath $secretsDirectory -PathType Container)) {
+        throw 'No existe la carpeta local de credenciales. Revise FirebaseServiceAccount.'
+    }
+    $stravaFile = Join-Path $secretsDirectory ('appkm-strava-' + [guid]::NewGuid().ToString('N') + '.json')
+    $readBack = $null
+    $verified = $null
+    try {
+        Write-Utf8NoBom $stravaFile $stravaJson
+        aws secretsmanager put-secret-value `
+            --secret-id $stravaSecretArn `
+            --secret-string "file://$stravaFile" `
+            --region $Region `
+            --no-cli-pager | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo guardar Strava en Secrets Manager.' }
+
+        $readBack = aws secretsmanager get-secret-value `
+            --secret-id $stravaSecretArn `
+            --region $Region `
+            --query SecretString `
+            --output text `
+            --no-cli-pager
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo verificar el secreto Strava guardado.' }
+        try { $verified = ConvertFrom-Json -InputObject ($readBack -join "`n") }
+        catch { throw 'El secreto Strava guardado no es JSON valido. Su contenido no se mostrara.' }
+        if ([string]$verified.clientId -cne [string]$clientId -or [string]$verified.clientSecret -cne [string]$clientSecret) {
+            throw 'La verificacion de Strava no coincide con los valores ingresados.'
+        }
+        Write-Host 'Strava guardado y verificado: JSON valido, valores conservados.'
+    }
+    finally {
+        Remove-Item -LiteralPath $stravaFile -Force -ErrorAction SilentlyContinue
+        $clientSecret = $null
+        $secure = $null
+        $stravaJson = $null
+        $readBack = $null
+        $verified = $null
+    }
 }
 
+if (-not $ResumeCompute) {
 Write-Host '3/7 - Configurando Amazon SNS para FCM...'
 $snsArn = 'NOT_CONFIGURED'
 if (Test-Path $FirebaseServiceAccount) {
@@ -287,7 +313,7 @@ if (Test-Path $FirebaseServiceAccount) {
         }
     }
     catch {
-        throw "No se pudo validar $FirebaseServiceAccount como service account JSON: $($_.Exception.Message)"
+        throw 'No se pudo validar el archivo local como service account JSON. Revise su formato sin compartir su contenido.'
     }
     finally {
         $firebaseMeta = $null
@@ -295,19 +321,25 @@ if (Test-Path $FirebaseServiceAccount) {
 
     $existingArn = aws sns list-platform-applications `
         --region $Region `
-        --query "PlatformApplications[?contains(PlatformApplicationArn, 'appkm-staging-android')].PlatformApplicationArn | [0]" `
+        --query "PlatformApplications[?ends_with(PlatformApplicationArn, ':app/GCM/appkm-staging-android')].PlatformApplicationArn | [0]" `
         --output text `
         --no-cli-pager
     if ($LASTEXITCODE -ne 0) {
         throw 'No se pudo consultar las platform applications de SNS.'
     }
 
-    $credentialLiteral = ConvertTo-JsonStringLiteral $serviceJson
-    $attrsJson = '{"PlatformCredential":' + $credentialLiteral + '}'
+    # Serialize the raw JSON as a STRING; never serialize the parsed credential object.
+    # This escapes quotes/newlines correctly without traversing PowerShell metadata.
+    $attrsJson = ConvertTo-Json -InputObject @{ PlatformCredential = [string]$serviceJson } -Depth 3 -Compress
+    $roundTrip = ConvertFrom-Json -InputObject $attrsJson
+    if ([string]$roundTrip.PlatformCredential -cne $serviceJson) {
+        throw 'La serializacion de PlatformCredential no conserva el archivo original.'
+    }
+    $roundTrip = $null
 
     if ($existingArn -and $existingArn -ne 'None') {
         $snsArn = $existingArn.Trim()
-        $attrsFile = Join-Path $env:TEMP 'appkm-sns-attrs.json'
+        $attrsFile = Join-Path $firebaseFile.DirectoryName ('appkm-sns-attrs-' + [guid]::NewGuid().ToString('N') + '.json')
         Write-Utf8NoBom $attrsFile $attrsJson
         try {
             aws sns set-platform-application-attributes `
@@ -324,12 +356,13 @@ if (Test-Path $FirebaseServiceAccount) {
         }
     }
     else {
-        $inputFile = Join-Path $env:TEMP 'appkm-sns-create.json'
-        $inputJson = '{"Name":"appkm-staging-android","Platform":"GCM","Attributes":' + $attrsJson + '}'
-        Write-Utf8NoBom $inputFile $inputJson
+        $attrsFile = Join-Path $firebaseFile.DirectoryName ('appkm-sns-attrs-' + [guid]::NewGuid().ToString('N') + '.json')
+        Write-Utf8NoBom $attrsFile $attrsJson
         try {
             $snsArn = aws sns create-platform-application `
-                --cli-input-json "file://$inputFile" `
+                --name appkm-staging-android `
+                --platform GCM `
+                --attributes "file://$attrsFile" `
                 --region $Region `
                 --query PlatformApplicationArn `
                 --output text `
@@ -340,7 +373,7 @@ if (Test-Path $FirebaseServiceAccount) {
             $snsArn = $snsArn.Trim()
         }
         finally {
-            Remove-Item $inputFile -Force -ErrorAction SilentlyContinue
+            Remove-Item $attrsFile -Force -ErrorAction SilentlyContinue
         }
     }
 
@@ -359,11 +392,10 @@ if (Test-Path $FirebaseServiceAccount) {
 
     Write-Host 'Amazon SNS para FCM configurado correctamente (AuthenticationMethod=Token).'
     $serviceJson = $null
-    $credentialLiteral = $null
     $attrsJson = $null
 }
 else {
-    Write-Warning "No se encontro $FirebaseServiceAccount. SNS quedara pendiente; el resto de AWS se desplegara."
+    throw "No se encontro $FirebaseServiceAccount. Se detiene el despliegue antes de 4/7 hasta configurar SNS."
 }
 
 Write-Host '4/7 - Build y push de imágenes a ECR...'
@@ -373,19 +405,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Falló login de ECR.' }
 
 Push-Location $repoRoot
 try {
-    docker build -f backend\Dockerfile.Identity -t "$identityRepo:aws-staging" backend
+    docker build -f backend\Dockerfile.Identity -t "${identityRepo}:aws-staging" backend
     if ($LASTEXITCODE -ne 0) { throw 'Falló Docker Identity.' }
-    docker push "$identityRepo:aws-staging"
+    docker push "${identityRepo}:aws-staging"
     if ($LASTEXITCODE -ne 0) { throw 'Falló push Identity.' }
 
-    docker build -f backend\Dockerfile.Athletes -t "$athletesRepo:aws-staging" backend
+    docker build -f backend\Dockerfile.Athletes -t "${athletesRepo}:aws-staging" backend
     if ($LASTEXITCODE -ne 0) { throw 'Falló Docker Athletes.' }
-    docker push "$athletesRepo:aws-staging"
+    docker push "${athletesRepo}:aws-staging"
     if ($LASTEXITCODE -ne 0) { throw 'Falló push Athletes.' }
 
-    docker build -f backend\Dockerfile.Migrations -t "$migrationRepo:aws-staging" backend
+    docker build -f backend\Dockerfile.Migrations -t "${migrationRepo}:aws-staging" backend
     if ($LASTEXITCODE -ne 0) { throw 'Falló Docker Migrations.' }
-    docker push "$migrationRepo:aws-staging"
+    docker push "${migrationRepo}:aws-staging"
     if ($LASTEXITCODE -ne 0) { throw 'Falló push Migrations.' }
 }
 finally {
@@ -393,7 +425,7 @@ finally {
 }
 
 Write-Host '5/7 - Creando y ejecutando tarea de migraciones dentro de AWS...'
-Deploy-Stack 'true' 'false' "$identityRepo:aws-staging" "$athletesRepo:aws-staging" "$migrationRepo:aws-staging" $snsArn
+Deploy-Stack 'true' 'false' "${identityRepo}:aws-staging" "${athletesRepo}:aws-staging" "${migrationRepo}:aws-staging" $snsArn
 $cluster = Get-Output 'ClusterName'
 $taskDefinition = Get-Output 'MigrationTaskDefinitionArn'
 $subnetA = Get-Output 'PublicSubnetA'
@@ -418,16 +450,62 @@ if ($exitCode -ne '0') {
     throw "Las migraciones AWS fallaron. ExitCode=$exitCode. Revise CloudWatch /appkm/staging/migrations."
 }
 
+}
+else {
+    $snsArn = aws sns list-platform-applications `
+        --region $Region `
+        --query "PlatformApplications[?ends_with(PlatformApplicationArn, ':app/GCM/appkm-staging-android')].PlatformApplicationArn | [0]" `
+        --output text `
+        --no-cli-pager
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($snsArn) -or $snsArn -eq 'None') {
+        throw 'No se encontro la platform application SNS ya configurada. No se reanudara 6/7.'
+    }
+    $snsArn = $snsArn.Trim()
+    $authMethod = aws sns get-platform-application-attributes `
+        --platform-application-arn $snsArn `
+        --region $Region `
+        --query 'Attributes.AuthenticationMethod' `
+        --output text `
+        --no-cli-pager
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($authMethod) -or $authMethod.Trim() -ne 'Token') {
+        throw 'No se pudo confirmar SNS con autenticacion Token.'
+    }
+    Write-Host 'SNS verificado. Se omiten build/push y migraciones en esta reanudacion.'
+}
+
 Write-Host '6/7 - Desplegando APIs con ECS Express Mode (HTTPS administrado)...'
-Deploy-Stack 'true' 'true' "$identityRepo:aws-staging" "$athletesRepo:aws-staging" "$migrationRepo:aws-staging" $snsArn
+# The actual hostname is assigned by AWS; never derive it from ServiceName.
+$existingEndpoint = aws cloudformation describe-stacks `
+    --stack-name $StackName `
+    --region $Region `
+    --query "Stacks[0].Outputs[?OutputKey=='AthletesExpressEndpoint'].OutputValue | [0]" `
+    --output text `
+    --no-cli-pager
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar el endpoint de Athletes.' }
+$callbackForDeploy = 'https://localhost/api/v1/athletes/strava/callback'
+if (-not [string]::IsNullOrWhiteSpace($existingEndpoint) -and $existingEndpoint -ne 'None') {
+    $callbackForDeploy = (ConvertTo-HttpsBaseUrl $existingEndpoint) + '/api/v1/athletes/strava/callback'
+}
+Deploy-Stack 'true' 'true' "${identityRepo}:aws-staging" "${athletesRepo}:aws-staging" "${migrationRepo}:aws-staging" $snsArn $callbackForDeploy
+
+$assignedCallback = (ConvertTo-HttpsBaseUrl (Get-Output 'AthletesExpressEndpoint')) + '/api/v1/athletes/strava/callback'
+if ($assignedCallback -cne $callbackForDeploy) {
+    # A first creation needs two passes to avoid a CloudFormation self-reference.
+    Write-Host 'Aplicando el callback Strava con el endpoint recien asignado por AWS...'
+    Deploy-Stack 'true' 'true' "${identityRepo}:aws-staging" "${athletesRepo}:aws-staging" "${migrationRepo}:aws-staging" $snsArn $assignedCallback
+    $confirmedCallback = (ConvertTo-HttpsBaseUrl (Get-Output 'AthletesExpressEndpoint')) + '/api/v1/athletes/strava/callback'
+    if ($confirmedCallback -cne $assignedCallback) {
+        throw 'El endpoint cambio durante la actualizacion. Reanude con -ResumeCompute antes de probar OAuth.'
+    }
+}
 
 Write-Host '7/7 - Generando launcher Flutter AWS...'
-$identityApi = Get-Output 'IdentityApiBaseUrl'
-$athletesApi = Get-Output 'AthletesApiBaseUrl'
+$identityApi = ConvertTo-HttpsBaseUrl (Get-Output 'IdentityExpressEndpoint')
+$athletesApi = ConvertTo-HttpsBaseUrl (Get-Output 'AthletesExpressEndpoint')
 $userPoolId = Get-Output 'UserPoolId'
 $userPoolClientId = Get-Output 'UserPoolClientId'
 $identityPoolId = Get-Output 'IdentityPoolId'
-$stravaCallback = Get-Output 'StravaCallbackUrl'
+$stravaCallback = $athletesApi + '/api/v1/athletes/strava/callback'
 
 $launcher = Join-Path $repoRoot 'scripts\aws\Run-AppKmAwsStaging.ps1'
 @"
@@ -450,6 +528,7 @@ Write-Host 'AWS App KM staging desplegado.'
 Write-Host "Identity API: $identityApi"
 Write-Host "Athletes API: $athletesApi"
 Write-Host "Strava callback: $stravaCallback"
+Write-Host "Authorization Callback Domain: $(([uri]$athletesApi).Host)"
 Write-Host "Flutter: .\scripts\aws\Run-AppKmAwsStaging.ps1"
 Write-Host ''
 Write-Host 'IMPORTANTE: actualice Authorization Callback Domain en Strava con el dominio mostrado antes de probar OAuth.'
