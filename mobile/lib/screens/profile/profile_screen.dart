@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/routes/app_routes.dart';
 import '../../models/athletes/current_athlete.dart';
 import '../../models/athletes/athlete_settings.dart';
 import '../../services/athletes/athlete_api_service.dart';
 import '../../services/auth/auth_token_store.dart';
-import '../../services/auth/auth_api_service.dart';
-import '../../services/notifications/push_device_registration_service.dart';
 import '../../services/strava/strava_backend_api_service.dart';
 import '../../services/strava/strava_oauth_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({
+    super.key,
+    required this.onNotificationsPressed,
+    required this.onLogoutPressed,
+    required this.unreadNotificationCount,
+    required this.notificationRefresh,
+  });
+
+  final VoidCallback onNotificationsPressed;
+  final VoidCallback onLogoutPressed;
+  final int Function() unreadNotificationCount;
+  final Listenable notificationRefresh;
+
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -19,12 +30,12 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  void _refreshHeader() { if (mounted) setState(() {}); }
   bool _notificationsEnabled = true;
   bool _automaticSyncEnabled = true;
 
   late final AthleteApiService _athleteApiService;
   late final AuthTokenStore _authTokenStore;
-  late final AuthApiService _authApiService;
   late final StravaBackendApiService _stravaBackendApiService;
   late final StravaOAuthLauncher _stravaOAuthLauncher;
 
@@ -42,10 +53,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       _athleteApiService = AthleteApiService();
       _authTokenStore = AuthTokenStore();
-      _authApiService = AuthApiService();
       _stravaBackendApiService = StravaBackendApiService();
       _stravaOAuthLauncher = const StravaOAuthLauncher();
       WidgetsBinding.instance.addObserver(this);
+      widget.notificationRefresh.addListener(_refreshHeader);
 
       _loadProfile();
     }
@@ -53,8 +64,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.notificationRefresh.removeListener(_refreshHeader);
     _athleteApiService.dispose();
-    _authApiService.dispose();
     _stravaBackendApiService.dispose();
     super.dispose();
   }
@@ -406,60 +417,23 @@ class _ProfileScreenState extends State<ProfileScreen>
     countryController.dispose();
   }
 
-  void _showLogoutDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Cerrar sesión'),
-          content: const Text(
-            '¿Deseas cerrar la sesión actual?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(context);
-
-                await PushDeviceRegistrationService.instance
-                    .deactivateCurrentTokenForLogout();
-
-                try {
-                  final refreshToken =
-                      await _authTokenStore.getRefreshToken();
-
-                  if (refreshToken != null &&
-                      refreshToken.isNotEmpty) {
-                    await _authApiService.logout(
-                      refreshToken: refreshToken,
-                    );
-                  }
-                } catch (_) {
-                  // Aunque falle el logout remoto,
-                  // eliminamos la sesión local.
-                }
-
-                await _authTokenStore.clearSession();
-
-                if (!mounted) {
-                  return;
-                }
-
-                Navigator.of(this.context).pushNamedAndRemoveUntil(
-                  '/login',
-                  (route) => false,
-                );
-              },
-              child: const Text('Cerrar sesión'),
-            ),
-          ],
-        );
-      },
+  Future<void> _openChangePassword() async {
+    final email = _email ?? await _authTokenStore.getEmail();
+    if (!mounted) return;
+    if (email == null || email.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo obtener el correo de la cuenta.')),
+      );
+      return;
+    }
+    final result = await Navigator.pushNamed<String>(
+      context,
+      AppRoutes.forgotPassword,
+      arguments: email.trim(),
+    );
+    if (!mounted || result == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Contraseña actualizada correctamente.')),
     );
   }
 
@@ -475,13 +449,31 @@ class _ProfileScreenState extends State<ProfileScreen>
             fontWeight: FontWeight.w700,
           ),
         ),
-        centerTitle: false,
+        centerTitle: true,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         foregroundColor: AppColors.primary,
         iconTheme: const IconThemeData(
           color: AppColors.primary,
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Notificaciones',
+            onPressed: widget.onNotificationsPressed,
+            icon: widget.unreadNotificationCount() > 0
+                ? Badge(
+                    label: Text(widget.unreadNotificationCount() > 9
+                        ? '9+' : '${widget.unreadNotificationCount()}'),
+                    child: const Icon(Icons.notifications_outlined),
+                  )
+                : const Icon(Icons.notifications_outlined),
+          ),
+          IconButton(
+            tooltip: 'Cerrar sesión',
+            onPressed: widget.onLogoutPressed,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -518,10 +510,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                 onTap: _showEditProfileDialog,
               ),
               const _OptionDivider(),
-              const _ProfileOption(
+              _ProfileOption(
                 icon: Icons.lock_outline,
                 title: 'Cambiar contraseña',
                 subtitle: 'Actualiza tu contraseña de acceso',
+                onTap: _openChangePassword,
               ),
             ],
           ),
@@ -620,26 +613,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
           ),
-          const SizedBox(height: 22),
-          OutlinedButton.icon(
-            onPressed: _showLogoutDialog,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(
-                color: Colors.red,
-              ),
-              padding: const EdgeInsets.symmetric(
-                vertical: 16,
-              ),
-            ),
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text(
-              'Cerrar sesión',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+
         ],
       ),
     );

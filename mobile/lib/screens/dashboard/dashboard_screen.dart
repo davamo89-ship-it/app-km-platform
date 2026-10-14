@@ -5,6 +5,9 @@ import '../../models/athletes/current_athlete.dart';
 import '../../models/points/upcoming_point_expiration.dart';
 import '../../models/redemptions/pending_redemption_confirmation.dart';
 import '../../services/athletes/athlete_api_service.dart';
+import '../../services/auth/auth_api_service.dart';
+import '../../services/auth/auth_token_store.dart';
+import '../../services/notifications/push_device_registration_service.dart';
 import '../../services/points/points_backend_api_service.dart';
 import '../../services/redemptions/pending_redemptions_backend_api_service.dart';
 import '../history/history_screen.dart';
@@ -15,9 +18,6 @@ import '../workouts/activity_screen.dart';
 import 'dashboard_controller.dart';
 import 'widgets/dashboard_header.dart';
 import 'widgets/points_card.dart';
-import 'widgets/recent_activity_card.dart';
-import 'widgets/section_title.dart';
-import 'widgets/statistics_grid.dart';
 import 'widgets/strava_connection_card.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -37,10 +37,13 @@ class _DashboardScreenState
     extends State<DashboardScreen>
     with WidgetsBindingObserver {
   late int _currentIndex;
+  bool _isLoggingOut = false;
 
   int _unreadNotificationCount = 0;
   String? _currentNotificationSignature;
   String? _reviewedNotificationSignature;
+
+  final ValueNotifier<int> _profileNotificationRefresh = ValueNotifier<int>(0);
 
   final GlobalKey<_HomeDashboardState>
       _homeDashboardKey =
@@ -75,12 +78,21 @@ class _DashboardScreenState
         unreadNotificationCount: () =>
             _unreadNotificationCount,
         onOpenRedemptions: _openRedemptions,
+        onLogoutPressed: _confirmLogout,
       ),
       const ActivityScreen(),
       HistoryScreen(
         onNavigateMainSection: _changePage,
+        onNotificationsPressed: _openNotifications,
+        onLogoutPressed: _confirmLogout,
+        unreadNotificationCount: () => _unreadNotificationCount,
       ),
-      const ProfileScreen(),
+      ProfileScreen(
+        onNotificationsPressed: _openNotifications,
+        onLogoutPressed: _confirmLogout,
+        unreadNotificationCount: () => _unreadNotificationCount,
+        notificationRefresh: _profileNotificationRefresh,
+      ),
     ];
 
     _loadUnreadNotifications();
@@ -90,6 +102,7 @@ class _DashboardScreenState
   void dispose() {
     WidgetsBinding.instance
         .removeObserver(this);
+    _profileNotificationRefresh.dispose();
     _pointsApi.dispose();
     _pendingRedemptionsApi.dispose();
     super.dispose();
@@ -173,6 +186,7 @@ class _DashboardScreenState
 
       _homeDashboardKey.currentState
           ?.refreshHeader();
+      _profileNotificationRefresh.value++;
     } catch (_) {
       // Conservamos el último estado visual
       // conocido ante un error temporal.
@@ -226,6 +240,7 @@ class _DashboardScreenState
 
       _homeDashboardKey.currentState
           ?.refreshHeader();
+      _profileNotificationRefresh.value++;
     }
 
     await Navigator.of(context).push(
@@ -262,6 +277,60 @@ class _DashboardScreenState
 
     await _loadUnreadNotifications();
     await _homeDashboardKey.currentState?.reloadAthlete();
+  }
+
+  Future<void> _confirmLogout() async {
+    if (_isLoggingOut) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Deseas cerrar la sesión actual?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cerrar sesión'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isLoggingOut = true);
+    final tokenStore = AuthTokenStore();
+    final authApi = AuthApiService();
+    try {
+      try {
+        await PushDeviceRegistrationService.instance
+            .deactivateCurrentTokenForLogout();
+      } catch (_) {
+        // El cierre local no depende del servicio de notificaciones.
+      }
+      try {
+        final refreshToken = await tokenStore.getRefreshToken();
+        if (refreshToken != null && refreshToken.isNotEmpty) {
+          await authApi.logout(refreshToken: refreshToken);
+        }
+      } catch (_) {
+        // El cierre local sigue aunque el servidor no responda.
+      }
+      await tokenStore.clearSession();
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login', (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No fue posible cerrar la sesión.')),
+      );
+    } finally {
+      authApi.dispose();
+      if (mounted) setState(() => _isLoggingOut = false);
+    }
   }
 
   void _changePage(int index) {
@@ -474,6 +543,7 @@ class HomeDashboard
     required this
         .unreadNotificationCount,
     required this.onOpenRedemptions,
+    required this.onLogoutPressed,
   });
 
   final VoidCallback
@@ -481,6 +551,7 @@ class HomeDashboard
   final int Function()
       unreadNotificationCount;
   final VoidCallback onOpenRedemptions;
+  final VoidCallback onLogoutPressed;
 
   @override
   State<HomeDashboard> createState() =>
@@ -652,6 +723,7 @@ class _HomeDashboardState
                 onNotificationsPressed:
                     widget
                         .onNotificationsPressed,
+                onLogoutPressed: widget.onLogoutPressed,
               ),
             ),
             SliverPadding(
@@ -696,18 +768,15 @@ class _HomeDashboardState
                           ),
                         ),
                       ),
-                    PointsCard(
-                      points: _controller
-                              .athleteDashboard
-                              ?.pointsBalance ??
-                          0,
-                      isLoading:
-                          _controller
-                              .isLoadingAthleteDashboard,
+                    Center(
+                      child: _DashboardRedemptionButton(
+                        onPressed: widget.onOpenRedemptions,
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    _DashboardRedemptionButton(
-                      onPressed: widget.onOpenRedemptions,
+                    const SizedBox(height: 24),
+                    PointsCard(
+                      points: _controller.athleteDashboard?.pointsBalance ?? 0,
+                      isLoading: _controller.isLoadingAthleteDashboard,
                     ),
                     if ((_controller
                                 .athleteDashboard
@@ -773,32 +842,7 @@ class _HomeDashboardState
                         ),
                       ),
                     ],
-                    const SizedBox(
-                        height: 20),
-                    const SectionTitle(
-                      title:
-                          'Tu resumen',
-                      actionText:
-                          'Este mes',
-                    ),
-                    const SizedBox(
-                        height: 12),
-                    if (_controller
-                            .athleteDashboard !=
-                        null)
-                      StatisticsGrid(
-                        dashboard:
-                            _controller
-                                .athleteDashboard!,
-                        isLoading:
-                            _controller
-                                .isLoadingAthleteDashboard,
-                        formatKilometers:
-                            _controller
-                                .formatKilometers,
-                      ),
-                    const SizedBox(
-                        height: 24),
+                    const SizedBox(height: 24),
                     StravaConnectionCard(
                       status: _controller
                           .effectiveConnectionStatus,
@@ -841,44 +885,6 @@ class _HomeDashboardState
                         ),
                       ),
                     ],
-                    const SizedBox(
-                        height: 24),
-                    const SectionTitle(
-                      title:
-                          'Actividad del último día sincronizado',
-                      actionText:
-                          'Ver todas',
-                    ),
-                    const SizedBox(height: 12),
-                    if (_controller.isLoadingAthleteDashboard)
-                      const RecentActivityCard(
-                        activity: null,
-                        isLoading: true,
-                      )
-                    else if ((_controller
-                                .athleteDashboard
-                                ?.latestDayActivities ??
-                            const [])
-                        .isEmpty)
-                      const RecentActivityCard(
-                        activity: null,
-                        isLoading: false,
-                      )
-                    else
-                      ..._controller
-                          .athleteDashboard!
-                          .latestDayActivities
-                          .map(
-                            (activity) => Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: 12,
-                              ),
-                              child: RecentActivityCard(
-                                activity: activity,
-                                isLoading: false,
-                              ),
-                            ),
-                          ),
                   ],
                 ),
               ),
@@ -891,66 +897,53 @@ class _HomeDashboardState
 }
 
 class _DashboardRedemptionButton extends StatelessWidget {
-  const _DashboardRedemptionButton({
-    required this.onPressed,
-  });
-
+  const _DashboardRedemptionButton({required this.onPressed});
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.primary.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(24),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 16,
-          ),
-          child: Row(
+        borderRadius: BorderRadius.circular(24),
+        child: SizedBox(
+          width: 190,
+          height: 190,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 66,
+                height: 66,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: const Icon(
                   Icons.qr_code_2_rounded,
                   color: AppColors.primary,
+                  size: 36,
                 ),
               ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Crear canje',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Genera un código para canjear tus puntos.',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 12),
+              const Text(
+                'Crear canje',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.primary,
+              const SizedBox(height: 6),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  'Genera un código para canjear tus puntos.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                ),
               ),
             ],
           ),

@@ -10,10 +10,8 @@ class PointsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Transform.translate(
-      offset: const Offset(0, -14),
-      child: Container(
-        padding: const EdgeInsets.all(22),
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
@@ -28,8 +26,8 @@ class PointsCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 58,
-              height: 58,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(18),
@@ -37,34 +35,32 @@ class PointsCard extends StatelessWidget {
               child: const Icon(
                 Icons.stars_rounded,
                 color: AppColors.primary,
-                size: 34,
+                size: 42,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Puntos disponibles',
-                    style: TextStyle(color: Colors.black54, fontSize: 14),
+                    style: TextStyle(color: Colors.black54, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     isLoading ? 'Actualizando...' : '$points KM Points',
                     style: const TextStyle(
                       color: AppColors.textDark,
-                      fontSize: 24,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.black38),
           ],
         ),
-      ),
     );
   }
 }

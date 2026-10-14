@@ -7,11 +7,13 @@ class DashboardHeader extends StatelessWidget {
     super.key,
     required this.displayName,
     required this.onNotificationsPressed,
+    required this.onLogoutPressed,
     this.unreadNotificationCount = 0,
   });
 
   final String displayName;
   final VoidCallback onNotificationsPressed;
+  final VoidCallback onLogoutPressed;
   final int unreadNotificationCount;
 
   @override
@@ -73,6 +75,16 @@ class DashboardHeader extends StatelessWidget {
           _NotificationBell(
             unreadCount: unreadNotificationCount,
             onPressed: onNotificationsPressed,
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: 'Cerrar sesión',
+            onPressed: onLogoutPressed,
+            style: IconButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+            ),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),

@@ -27,17 +27,13 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   String _selectedFilter = 'Todas';
 
-  bool _isCheckingConnection = true;
   bool _isConnected = false;
   bool _isAuthorizing = false;
   bool _isSynchronizing = false;
   bool _isLoadingActivities = false;
 
-  String? _connectionError;
   String? _activitiesError;
-  String? _syncError;
 
-  StravaSyncResult? _lastSyncResult;
 
   @override
   void initState() {
@@ -96,10 +92,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   Future<void> _loadStravaStatus() async {
     if (mounted) {
-      setState(() {
-        _isCheckingConnection = true;
-        _connectionError = null;
-      });
     }
 
     try {
@@ -112,23 +104,19 @@ class _ActivityScreenState extends State<ActivityScreen>
       setState(() {
         _isConnected = status.connected;
         _isAuthorizing = false;
-        _isCheckingConnection = false;
-        _connectionError = null;
 
         if (!status.connected) {
           _activities = const [];
           _activitiesError = null;
         }
       });
-    } on StravaBackendApiException catch (error) {
+    } on StravaBackendApiException {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _isCheckingConnection = false;
         _isAuthorizing = false;
-        _connectionError = error.message;
       });
     } catch (_) {
       if (!mounted) {
@@ -136,10 +124,7 @@ class _ActivityScreenState extends State<ActivityScreen>
       }
 
       setState(() {
-        _isCheckingConnection = false;
         _isAuthorizing = false;
-        _connectionError =
-            'No fue posible verificar la conexión con Strava.';
       });
     }
   }
@@ -213,7 +198,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
     setState(() {
       _isAuthorizing = true;
-      _connectionError = null;
     });
 
     try {
@@ -233,7 +217,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
       setState(() {
         _isAuthorizing = false;
-        _connectionError = error.message;
       });
 
       _showMessage(error.message);
@@ -244,69 +227,11 @@ class _ActivityScreenState extends State<ActivityScreen>
 
       setState(() {
         _isAuthorizing = false;
-        _connectionError =
-            'No fue posible iniciar la conexión con Strava.';
       });
 
       _showMessage(
         'No fue posible iniciar la conexión con Strava.',
       );
-    }
-  }
-
-  Future<void> _disconnectStrava() async {
-    final shouldDisconnect = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Desconectar Strava'),
-          content: const Text(
-            '¿Deseas desconectar la cuenta de Strava de App KM?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text('Desconectar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldDisconnect != true) {
-      return;
-    }
-
-    try {
-      await _stravaApiService.disconnect();
-      await _loadStravaStatus();
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _lastSyncResult = null;
-        _syncError = null;
-      });
-
-      _showMessage(
-        'La cuenta de Strava fue desconectada.',
-      );
-    } on StravaBackendApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showMessage(error.message);
     }
   }
 
@@ -322,7 +247,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
     setState(() {
       _isSynchronizing = true;
-      _syncError = null;
     });
 
     try {
@@ -335,8 +259,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
       setState(() {
         _isSynchronizing = false;
-        _lastSyncResult = result;
-        _syncError = null;
       });
 
       await _loadActivities();
@@ -353,7 +275,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
       setState(() {
         _isSynchronizing = false;
-        _syncError = error.message;
       });
 
       _showMessage(error.message);
@@ -364,8 +285,6 @@ class _ActivityScreenState extends State<ActivityScreen>
 
       setState(() {
         _isSynchronizing = false;
-        _syncError =
-            'No fue posible sincronizar las actividades.';
       });
 
       _showMessage(
@@ -559,6 +478,14 @@ class _ActivityScreenState extends State<ActivityScreen>
         iconTheme: const IconThemeData(
           color: AppColors.primary,
         ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            thickness: 1,
+            color: Color(0xFFE4E9E8),
+          ),
+        ),
         actions: [
           IconButton(
             tooltip: _isConnected
@@ -591,33 +518,21 @@ class _ActivityScreenState extends State<ActivityScreen>
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
                 20,
+                26,
                 20,
-                20,
-                28,
+                32,
               ),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _StravaStatusCard(
-                    isChecking: _isCheckingConnection,
-                    isConnected: _isConnected,
-                    isAuthorizing: _isAuthorizing,
-                    isSynchronizing: _isSynchronizing,
-                    connectionError: _connectionError,
-                    syncError: _syncError,
-                    result: _lastSyncResult,
-                    onConnect: _connectStrava,
-                    onDisconnect: _disconnectStrava,
-                    onSynchronize:
-                        _synchronizeActivities,
-                  ),
-                  const SizedBox(height: 22),
                   _ActivitySummary(
                     activityCount: _activities.length,
                     totalKilometers: _totalKilometers,
                     totalMovingSeconds:
                         _totalMovingSeconds,
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 28),
+                  const Divider(height: 1, color: Color(0xFFE1E6E6)),
+                  const SizedBox(height: 24),
                   const Text(
                     'Filtrar actividades',
                     style: TextStyle(
@@ -635,6 +550,8 @@ class _ActivityScreenState extends State<ActivityScreen>
                       });
                     },
                   ),
+                  const SizedBox(height: 28),
+                  const Divider(height: 1, color: Color(0xFFE1E6E6)),
                   const SizedBox(height: 24),
                   Row(
                     children: [
@@ -698,262 +615,6 @@ class _ActivityScreenState extends State<ActivityScreen>
                     ),
                 ]),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StravaStatusCard extends StatelessWidget {
-  const _StravaStatusCard({
-    required this.isChecking,
-    required this.isConnected,
-    required this.isAuthorizing,
-    required this.isSynchronizing,
-    required this.connectionError,
-    required this.syncError,
-    required this.result,
-    required this.onConnect,
-    required this.onDisconnect,
-    required this.onSynchronize,
-  });
-
-  final bool isChecking;
-  final bool isConnected;
-  final bool isAuthorizing;
-  final bool isSynchronizing;
-
-  final String? connectionError;
-  final String? syncError;
-  final StravaSyncResult? result;
-
-  final Future<void> Function() onConnect;
-  final Future<void> Function() onDisconnect;
-  final Future<void> Function() onSynchronize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(21),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(21),
-          border: Border.all(
-            color:
-                connectionError != null ||
-                    syncError != null
-                ? Colors.red.withValues(alpha: 0.25)
-                : AppColors.primary
-                    .withValues(alpha: 0.12),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: isConnected
-                        ? AppColors.primary
-                            .withValues(alpha: 0.12)
-                        : Colors.orange
-                            .withValues(alpha: 0.12),
-                    borderRadius:
-                        BorderRadius.circular(15),
-                  ),
-                  child: Icon(
-                    isConnected
-                        ? Icons.check_circle_rounded
-                        : Icons.link_rounded,
-                    color: isConnected
-                        ? AppColors.primary
-                        : Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isConnected
-                            ? 'Strava conectado'
-                            : 'Conecta tu cuenta de Strava',
-                        style: const TextStyle(
-                          color: AppColors.textDark,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        isConnected
-                            ? 'Mostrando actividades reales de Strava.'
-                            : 'Autoriza App KM para consultar tus actividades.',
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (isConnected)
-                  PopupMenuButton<String>(
-                    tooltip: 'Opciones de Strava',
-                    onSelected: (value) {
-                      if (value == 'disconnect') {
-                        onDisconnect();
-                      }
-                    },
-                    itemBuilder: (context) {
-                      return const [
-                        PopupMenuItem(
-                          value: 'disconnect',
-                          child: Text(
-                            'Desconectar cuenta',
-                          ),
-                        ),
-                      ];
-                    },
-                  ),
-              ],
-            ),
-            if (isChecking) ...[
-              const SizedBox(height: 18),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text(
-                'Verificando conexión con Strava...',
-                style: TextStyle(
-                  color: Colors.black54,
-                  fontSize: 12,
-                ),
-              ),
-            ] else if (isAuthorizing) ...[
-              const SizedBox(height: 18),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text(
-                'Completa la autorización en Strava y regresa a App KM.',
-                style: TextStyle(
-                  color: Colors.black54,
-                  fontSize: 12,
-                ),
-              ),
-            ] else if (connectionError != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                connectionError!,
-                style: TextStyle(
-                  color: Colors.red.shade700,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-            if (isConnected && isSynchronizing) ...[
-              const SizedBox(height: 18),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 9),
-              const Text(
-                'Sincronizando actividades...',
-                style: TextStyle(
-                  color: Colors.black54,
-                  fontSize: 12,
-                ),
-              ),
-            ] else if (isConnected &&
-                syncError != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                syncError!,
-                style: TextStyle(
-                  color: Colors.red.shade700,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ] else if (isConnected &&
-                result != null) ...[
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  _SmallValue(
-                    label: 'Recuperadas',
-                    value:
-                        result!.retrieved.toString(),
-                  ),
-                  _SmallValue(
-                    label: 'Guardadas',
-                    value: result!.saved.toString(),
-                  ),
-                  _SmallValue(
-                    label: 'Duplicadas',
-                    value: result!
-                        .skippedDuplicate
-                        .toString(),
-                  ),
-                  _SmallValue(
-                    label: 'Inválidas',
-                    value: result!
-                        .skippedInvalid
-                        .toString(),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: isConnected
-                  ? OutlinedButton.icon(
-                      onPressed: isSynchronizing
-                          ? null
-                          : onSynchronize,
-                      icon: isSynchronizing
-                          ? const SizedBox(
-                              width: 17,
-                              height: 17,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.sync_rounded,
-                            ),
-                      label: Text(
-                        isSynchronizing
-                            ? 'Sincronizando...'
-                            : 'Sincronizar ahora',
-                      ),
-                    )
-                  : FilledButton.icon(
-                      onPressed:
-                          isAuthorizing || isChecking
-                          ? null
-                          : onConnect,
-                      icon: const Icon(
-                        Icons.link_rounded,
-                      ),
-                      label: Text(
-                        isAuthorizing
-                            ? 'Esperando autorización...'
-                            : 'Conectar con Strava',
-                      ),
-                    ),
             ),
           ],
         ),
@@ -1249,52 +910,6 @@ class _SummaryValue extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _SmallValue extends StatelessWidget {
-  const _SmallValue({
-    required this.label,
-    required this.value,
-  });
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 9,
-      ),
-      decoration: BoxDecoration(
-        color:
-            AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.black54,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

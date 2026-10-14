@@ -5,7 +5,6 @@ import '../../models/points/point_history_item.dart';
 import '../../models/points/upcoming_point_expiration.dart';
 import '../../services/api/authenticated_api_client.dart';
 import '../../services/points/points_backend_api_service.dart';
-import '../redemptions/redemptions_screen.dart';
 
 enum HistoryMovementType {
   all,
@@ -20,9 +19,15 @@ class HistoryScreen extends StatefulWidget {
   const HistoryScreen({
     super.key,
     this.onNavigateMainSection,
+    required this.onNotificationsPressed,
+    required this.onLogoutPressed,
+    required this.unreadNotificationCount,
   });
 
   final ValueChanged<int>? onNavigateMainSection;
+  final VoidCallback onNotificationsPressed;
+  final VoidCallback onLogoutPressed;
+  final int Function() unreadNotificationCount;
 
   @override
   State<HistoryScreen> createState() =>
@@ -233,20 +238,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Future<void> _openRedemptions() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => RedemptionsScreen(
-          onNavigateMainSection: widget.onNavigateMainSection,
-        ),
-      ),
-    );
-
-    if (!mounted) return;
-
-    await _loadHistory();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -259,7 +250,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        centerTitle: false,
+        centerTitle: true,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         foregroundColor: AppColors.primary,
@@ -268,37 +259,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Información',
-            onPressed: () {
-              showDialog<void>(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                    title: const Text(
-                      'Sobre el historial',
-                    ),
-                    content: const Text(
-                      'Aquí puede consultar los movimientos '
-                      'reales de KM Points registrados por '
-                      'App KM.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Entendido'),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-            icon: const Icon(
-              Icons.info_outline_rounded,
-              color: AppColors.primary,
+            tooltip: 'Notificaciones',
+            onPressed: widget.onNotificationsPressed,
+            icon: Badge(
+              isLabelVisible: widget.unreadNotificationCount() > 0,
+              label: Text(
+                widget.unreadNotificationCount() > 9
+                    ? '9+'
+                    : '${widget.unreadNotificationCount()}',
+              ),
+              child: const Icon(Icons.notifications_none_rounded),
             ),
           ),
+          IconButton(
+            tooltip: 'Cerrar sesión',
+            onPressed: widget.onLogoutPressed,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: RefreshIndicator(
@@ -358,11 +336,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _BalanceCard(
           balance: _balance,
         ),
-        const SizedBox(height: 14),
-        _RedemptionsEntryCard(
-          onPressed: _openRedemptions,
-        ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 20),
         const Text(
           'Resumen',
           style: TextStyle(
@@ -1396,71 +1370,4 @@ String _activityLabel(String value) {
   }
 
   return value;
-}
-
-class _RedemptionsEntryCard extends StatelessWidget {
-  const _RedemptionsEntryCard({
-    required this.onPressed,
-  });
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(
-                  Icons.qr_code_2_rounded,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Canjes',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Consulta, crea y administra tus canjes.',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.primary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
