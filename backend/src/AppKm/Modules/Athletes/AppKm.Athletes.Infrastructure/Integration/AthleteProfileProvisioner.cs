@@ -21,6 +21,7 @@ internal sealed class AthleteProfileProvisioner
     public async Task CreateAsync(
         Guid userId,
         string displayName,
+        DateTimeOffset registeredAtUtc,
         CancellationToken cancellationToken)
     {
         bool exists =
@@ -37,7 +38,7 @@ internal sealed class AthleteProfileProvisioner
             AthleteId.New(),
             userId,
             displayName,
-            DateTimeOffset.UtcNow);
+            registeredAtUtc.ToUniversalTime());
 
         await _athleteRepository.AddAsync(
             athlete,

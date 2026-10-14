@@ -1,4 +1,4 @@
-using Xunit;
+﻿using Xunit;
 using AppKm.Athletes.Application.Activities;
 using AppKm.Athletes.Application.Interfaces;
 
@@ -47,7 +47,7 @@ public sealed class StravaActivityValidatorTests
     }
 
     [Fact]
-    public void Validate_PreviousDay_ReturnsExpectedReason()
+    public void Validate_PreviousDayAfterRegistration_ReturnsValid()
     {
         DateTimeOffset now =
             new(2026, 9, 18, 18, 0, 0, TimeSpan.FromHours(-6));
@@ -61,8 +61,36 @@ public sealed class StravaActivityValidatorTests
         ActivityValidationResult result =
             _validator.Validate(activity, now);
 
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Validate_BeforeRegistration_IsRejected()
+    {
+        var now = new DateTimeOffset(2026, 10, 23, 18, 0, 0, TimeSpan.FromHours(-6));
+        var registered = new DateTimeOffset(2026, 10, 13, 10, 0, 0, TimeSpan.FromHours(-6));
+        var activity = CreateActivity("Run", 5000, new DateTime(2026, 10, 12, 12, 0, 0));
+        var result = _validator.Validate(activity, now, registered);
         Assert.False(result.IsValid);
-        Assert.Equal("ActivityNotFromCurrentDay", result.Reason);
+        Assert.Equal("ActivityBeforeAppKmRegistration", result.Reason);
+    }
+
+    [Fact]
+    public void Validate_TenDaysAfterRegistration_IsAccepted()
+    {
+        var now = new DateTimeOffset(2026, 10, 23, 18, 0, 0, TimeSpan.FromHours(-6));
+        var registered = new DateTimeOffset(2026, 10, 13, 10, 0, 0, TimeSpan.FromHours(-6));
+        var activity = CreateActivity("Run", 5000, new DateTime(2026, 10, 20, 12, 0, 0));
+        Assert.True(_validator.Validate(activity, now, registered).IsValid);
+    }
+
+    [Fact]
+    public void Validate_SameDayBeforeRegistration_IsRejected()
+    {
+        var now = new DateTimeOffset(2026, 10, 13, 18, 0, 0, TimeSpan.FromHours(-6));
+        var registered = new DateTimeOffset(2026, 10, 13, 10, 0, 0, TimeSpan.FromHours(-6));
+        var activity = CreateActivity("Run", 5000, new DateTime(2026, 10, 13, 9, 0, 0));
+        Assert.Equal("ActivityBeforeAppKmRegistration", _validator.Validate(activity, now, registered).Reason);
     }
 
     [Fact]

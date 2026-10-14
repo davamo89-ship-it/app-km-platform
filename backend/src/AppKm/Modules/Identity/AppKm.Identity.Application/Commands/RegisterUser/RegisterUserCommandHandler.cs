@@ -113,6 +113,7 @@ public sealed class RegisterUserCommandHandler
         await _athleteProfileProvisioner.CreateAsync(
             userResult.Value.Id.Value,
             command.Email.Split('@')[0],
+            userResult.Value.CreatedAtUtc,
             cancellationToken);
 
         return Result<UserId>.Success(userId);

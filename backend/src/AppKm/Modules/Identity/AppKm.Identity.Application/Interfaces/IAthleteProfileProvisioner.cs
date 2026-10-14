@@ -5,5 +5,6 @@ public interface IAthleteProfileProvisioner
     Task CreateAsync(
         Guid userId,
         string displayName,
+        DateTimeOffset registeredAtUtc,
         CancellationToken cancellationToken);
 }

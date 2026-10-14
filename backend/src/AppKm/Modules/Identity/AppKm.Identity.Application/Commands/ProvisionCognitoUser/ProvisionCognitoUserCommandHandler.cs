@@ -113,6 +113,7 @@ public sealed class ProvisionCognitoUserCommandHandler
         await _athleteProfileProvisioner.CreateAsync(
             command.UserId,
             command.Email.Split('@')[0],
+            user.CreatedAtUtc,
             cancellationToken);
 
         IReadOnlyCollection<string> storedRoles =

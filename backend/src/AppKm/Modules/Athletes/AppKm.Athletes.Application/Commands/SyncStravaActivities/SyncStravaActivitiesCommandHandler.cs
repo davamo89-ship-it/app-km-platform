@@ -1,4 +1,4 @@
-using AppKm.Athletes.Application.Activities;
+﻿using AppKm.Athletes.Application.Activities;
 using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Domain.Activities;
 using AppKm.Athletes.Domain.Aggregates.Athletes;
@@ -87,30 +87,28 @@ public sealed class SyncStravaActivitiesCommandHandler
                 connection,
                 cancellationToken);
 
-        DateTimeOffset now =
-            DateTimeOffset.Now;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset registeredAt = athlete.CreatedAtUtc.ToUniversalTime();
 
-        DateTimeOffset startOfToday =
-            new(
-                now.Year,
-                now.Month,
-                now.Day,
-                0,
-                0,
-                0,
-                now.Offset);
+        // Import all eligible activities since registration, even after a late Strava connection.
+        var activities = new List<StravaActivityResult>();
+        const int pageSize = 100;
+        const int maxPages = 100;
+        for (int page = 1; page <= maxPages; page++)
+        {
+            IReadOnlyList<StravaActivityResult> batch =
+                await _activitiesClient.GetActivitiesAsync(
+                    accessToken, registeredAt, now, page, pageSize, cancellationToken);
 
-        DateTimeOffset startOfTomorrow =
-            startOfToday.AddDays(1);
+            activities.AddRange(batch.Where(activity =>
+                activity.StartDateUtc.ToUniversalTime() >= registeredAt &&
+                activity.StartDateUtc.ToUniversalTime() <= now));
 
-        IReadOnlyList<StravaActivityResult> activities =
-            await _activitiesClient.GetActivitiesAsync(
-                accessToken,
-                startOfToday,
-                startOfTomorrow,
-                1,
-                100,
-                cancellationToken);
+            if (batch.Count < pageSize) break;
+            if (page == maxPages)
+                throw new InvalidOperationException(
+                    "Strava pagination limit exceeded; no activities were saved.");
+        }
 
         IReadOnlyList<AthleteActivity> history =
             await _activityRepository.GetAllByAthleteAsync(
@@ -126,12 +124,15 @@ public sealed class SyncStravaActivitiesCommandHandler
         var decisions =
             new List<ActivitySyncDecision>();
 
+        var seenStravaIds = new HashSet<long>();
+
         foreach (StravaActivityResult activity in activities)
         {
             ActivityValidationResult validation =
                 _validator.Validate(
                     activity,
-                    now);
+                    now,
+                    registeredAt);
 
             if (!validation.IsValid)
             {
@@ -153,6 +154,7 @@ public sealed class SyncStravaActivitiesCommandHandler
             }
 
             bool alreadyExists =
+                !seenStravaIds.Add(activity.Id) ||
                 await _activityRepository
                     .ExistsByStravaActivityIdAsync(
                         athlete.Id,

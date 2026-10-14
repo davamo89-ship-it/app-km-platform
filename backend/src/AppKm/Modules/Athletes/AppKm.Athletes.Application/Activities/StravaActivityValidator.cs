@@ -1,4 +1,4 @@
-using AppKm.Athletes.Application.Interfaces;
+﻿using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Domain.Activities;
 
 namespace AppKm.Athletes.Application.Activities;
@@ -7,7 +7,8 @@ public sealed class StravaActivityValidator
 {
     public ActivityValidationResult Validate(
         StravaActivityResult activity,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        DateTimeOffset? registeredAtUtc = null)
     {
         AppKmActivityType? activityType =
             StravaSportTypeMapper.Map(
@@ -19,19 +20,12 @@ public sealed class StravaActivityValidator
                 "UnsupportedSportType");
         }
 
-        DateOnly activityDate =
-            DateOnly.FromDateTime(
-                activity.StartDateLocal);
+        if (registeredAtUtc.HasValue &&
+            activity.StartDateUtc.ToUniversalTime() < registeredAtUtc.Value.ToUniversalTime())
+            return ActivityValidationResult.Invalid("ActivityBeforeAppKmRegistration");
 
-        DateOnly currentDate =
-            DateOnly.FromDateTime(
-                now.DateTime);
-
-        if (activityDate != currentDate)
-        {
-            return ActivityValidationResult.Invalid(
-                "ActivityNotFromCurrentDay");
-        }
+        if (activity.StartDateUtc.ToUniversalTime() > now.ToUniversalTime())
+            return ActivityValidationResult.Invalid("ActivityFromFuture");
 
         if (activity.DistanceMeters < 0)
         {

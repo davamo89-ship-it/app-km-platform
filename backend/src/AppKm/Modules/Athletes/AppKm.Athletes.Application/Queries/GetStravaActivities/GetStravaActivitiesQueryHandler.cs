@@ -1,4 +1,4 @@
-using AppKm.Athletes.Application.Interfaces;
+﻿using AppKm.Athletes.Application.Interfaces;
 using AppKm.Athletes.Domain.Aggregates.Athletes;
 using AppKm.Athletes.Domain.Aggregates.StravaConnections;
 using Platform.SharedKernel.Errors;
@@ -61,16 +61,30 @@ public sealed class GetStravaActivitiesQueryHandler
                 connection,
                 cancellationToken);
 
+        DateTimeOffset registeredAt = athlete.CreatedAtUtc.ToUniversalTime();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset effectiveAfter = query.After.HasValue &&
+            query.After.Value.ToUniversalTime() > registeredAt
+                ? query.After.Value.ToUniversalTime()
+                : registeredAt;
+        DateTimeOffset effectiveBefore = query.Before.HasValue &&
+            query.Before.Value.ToUniversalTime() < now
+                ? query.Before.Value.ToUniversalTime()
+                : now;
+
+        if (effectiveAfter > effectiveBefore)
+            return Result<IReadOnlyList<StravaActivityResult>>.Success([]);
+
         IReadOnlyList<StravaActivityResult> activities =
             await _activitiesClient.GetActivitiesAsync(
-                accessToken,
-                query.After,
-                query.Before,
-                query.Page,
-                query.PerPage,
+                accessToken, effectiveAfter, effectiveBefore,
+                Math.Max(1, query.Page), Math.Clamp(query.PerPage, 1, 100),
                 cancellationToken);
 
+        // Never expose pre-registration data even if Strava ignores date filters.
         return Result<IReadOnlyList<StravaActivityResult>>.Success(
-            activities);
+            activities.Where(activity =>
+                activity.StartDateUtc.ToUniversalTime() >= registeredAt &&
+                activity.StartDateUtc.ToUniversalTime() <= effectiveBefore).ToList());
     }
 }
